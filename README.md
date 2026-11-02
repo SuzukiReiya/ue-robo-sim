@@ -3,11 +3,38 @@
 Unreal Engine 5.6を使う、遅延・共有制御・自動制御の検証用ロボットシミュレータです。
 AP5の「C++でシーンを生成し、PowerShellでビルド・マップ生成・起動する」構成を基に、独立したプロジェクトとして作成しました。破壊・変形機能は含みません。
 
-**現在は初期実装です。Windows / UE 5.6での起動・旋回は利用者から動作報告を受けていますが、今回の前後移動・描画改善のWindowsでの再検証は未実施です。実機相当の精度やリアルタイム性能は保証しません。**
+**現在は検証用実装です。Windows / UE 5.6での旧版の起動・旋回は動作報告を受けていますが、モジュール分割・屋内シーン・テクスチャ生成を含む今回の変更についてはUE実機で未確認です。実機相当の精度やリアルタイム性能は保証しません。**
+
+## モジュール構成（今回の変更）
+
+```text
+キーボード / 操縦入力
+  ↓ SimKeyboardInput（UEキー状態取得）
+  ↓ SimControl::toCommand（キー状態→正規化指令）
+  ↓ SimControl::CommandRouter（手動 / 共有 / 自動の制御裁定・指令遅延）
+  ↓ SimVehicle（機体プラント・移動・接触）
+  ↓ Unreal Engineのシーン（SimEnvironment）
+  ↓ SimVideoPipeline（機体カメラ・映像遅延・PNG出力）
+  ↓ SimHUD（操縦者画面のみ表示）
+```
+
+共有／自動制御のアルゴリズムは`SimControl.h`の指令裁定へ追加する想定です。`SimVehicle.h`と`SimVideoPipeline.*`は制御方式を知らず、機体へ加える指令と撮影対象のActorだけで動作します。UDP入力はCommandRouterの外部入力口に接続し、画面用の遅延は機体の制御ループへ混ぜません。実験用真値は別CSVへ記録します。
+
+[各モジュールの責務と拡張方針](docs/構成と拡張方針.md)を参照してください。
+
+## テクスチャと屋内環境
+
+- フィールド内は20m四方のまま。プラダン風の板柵、異なる色の継ぎ目・柱・小障害物、塗装の擦れを追加。
+- フィールド外には34～36m規模の屋内ホールとして、外周壁、天井、梁、支柱、備品、照明パネルを配置。
+- `Scripts/GenerateTextures.py`が筋の揺らぎ、色むら、汚れ、擦れを合成したPNGを自動生成し、`Scripts/CreateMap.py`がUEのテクスチャアセットに取り込みます。外部画像・pip依存はありません。
+- 再現性のため画像の乱数seedは固定です。テクスチャの模様自体は反復しますが、一様な格子だけではありません。画像処理研究で重要な対象の輪郭や色と背景の混同は別途評価してください。
+- カメラ画像は従来どおり640×360・最大20fps。照明を固定したUnlit材質で、現時点ではフォトリアルな反射・陰影は再現しません。
+
+更新後は`git pull --ff-only`して`Scripts/BuildAndRun.ps1`を再実行してください。初回のテクスチャ生成・取り込み時は従来よりマップ生成に時間がかかる可能性があります。
 
 ## 初期版の機能
 
-- 20 m四方の簡易フィールド、自機、赤い移動対象、障害物をC++で生成。
+- 20m四方のテクスチャ付きフィールド、屋内ホール、自機、赤い移動対象、障害物をC++で生成。
 - WASD操作と一人称カメラ映像。操縦者画面は遅延させた画像だけを表示。
 - 指令遅延と映像遅延を独立設定。揺らぎ・欠落率・乱数seedも設定可能。
 - 手動／共有／外部自動制御。共有は手動と外部指令の重み付き合成。
@@ -103,7 +130,8 @@ python Clients\replay_commands.py Saved\Experiments\<実行ID>\truth.csv
 ```bash
 g++ -std=c++17 -Wall -Wextra -Werror Tests/test_core.cpp -o /tmp/test-core
 /tmp/test-core
-python3 -m py_compile Clients/*.py Scripts/CreateMap.py
+python3 -m py_compile Clients/*.py Scripts/*.py
+python3 Tests/test_textures.py
 ```
 
 GitHub ActionsはC++基盤テストとPowerShell構文確認を行います。UE本体のビルドは含みません。AP5のself-hosted runnerがリポジトリ単位で登録されている場合、このリポジトリからそのまま利用できるとは限りません。
