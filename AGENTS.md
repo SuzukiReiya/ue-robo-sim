@@ -5,5 +5,7 @@
 - mainは競技非依存の基盤とする。競技固有機能は専用ブランチで開発する。
 - 制御入力に正解座標を混ぜない。真値は評価ログに分離する。
 - 遅延は指令経路と映像経路を分離する。機体内制御には通信往復遅延を追加しない。
-- 変更時はTests/test_core.cppとPythonの構文を確認する。
+- 入力取得（SimKeyboardInput）／入力変換・裁定（SimControl）／機体運動（SimVehicle）／撮影・映像遅延（SimVideoPipeline）／場面（SimEnvironment）の境界を維持する。
+- 制御判断からSceneCaptureやHUD、機体Actor位置を直接変更しない。機体と映像は制御モードを知らない構造に保つ。
+- 変更時はTests/test_core.cpp、Tests/test_textures.pyとPythonの構文を確認する。
 - 外部通信は初期状態でlocalhostに限定する。
