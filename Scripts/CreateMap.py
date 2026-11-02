@@ -1,37 +1,78 @@
-"""空マップと視認性の高い検証用材質を生成・更新する。"""
+"""UE 5.6用のマップ・テクスチャ・材質を生成する。"""
+import sys
+from pathlib import Path
 import unreal
 
-unreal.EditorAssetLibrary.make_directory('/Game/Generated')
-path = '/Game/Generated/M_Robot'
-if unreal.EditorAssetLibrary.does_asset_exist(path):
-    material = unreal.EditorAssetLibrary.load_asset(path)
-else:
+# UE内蔵Pythonで実行。外部pipライブラリを使用しない。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from GenerateTextures import generate_all
+
+
+def import_texture(name, filename):
+    asset_path = '/Game/Generated/T_' + name
+    if unreal.EditorAssetLibrary.does_asset_exist(asset_path):
+        return unreal.EditorAssetLibrary.load_asset(asset_path)
+    task = unreal.AssetImportTask()
+    task.set_editor_property('filename', str(filename))
+    task.set_editor_property('destination_path', '/Game/Generated')
+    task.set_editor_property('destination_name', 'T_' + name)
+    task.set_editor_property('automated', True)
+    task.set_editor_property('replace_existing', False)
+    task.set_editor_property('save', True)
+    unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+    texture = unreal.EditorAssetLibrary.load_asset(asset_path)
+    if texture is None:
+        raise RuntimeError('テクスチャの取り込みに失敗: ' + asset_path)
+    return texture
+
+
+def create_material(name, texture=None):
+    path = '/Game/Generated/M_' + name
+    if unreal.EditorAssetLibrary.does_asset_exist(path):
+        return unreal.EditorAssetLibrary.load_asset(path)
     material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-        'M_Robot', '/Game/Generated', unreal.Material, unreal.MaterialFactoryNew())
-
-if material is None:
-    raise RuntimeError('検証用材質を取得できませんでした')
-
-# 旧版のライティング依存材質も更新する。既存アセットがある場合でも毎回チェックする。
-# 対象物の色が照明・露出に左右されると画像追跡の基準にできないため、Unlitとする。
-if (material.get_editor_property('shading_model') != unreal.MaterialShadingModel.MSM_UNLIT
-        or not material.get_editor_property('two_sided')):
-    unreal.MaterialEditingLibrary.delete_all_material_expressions(material)
+        'M_' + name, '/Game/Generated', unreal.Material, unreal.MaterialFactoryNew())
+    if material is None:
+        raise RuntimeError('材質生成に失敗: ' + name)
     material.set_editor_property('shading_model', unreal.MaterialShadingModel.MSM_UNLIT)
-    # カメラは背景用の大きな立方体の内側にある。
     material.set_editor_property('two_sided', True)
-    color = unreal.MaterialEditingLibrary.create_material_expression(
+
+    tint = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionVectorParameter)
-    color.set_editor_property('parameter_name', 'Color')
-    color.set_editor_property('default_value', unreal.LinearColor(0.5, 0.5, 0.5, 1))
+    tint.set_editor_property('parameter_name', 'Color')
+    tint.set_editor_property('default_value', unreal.LinearColor(1, 1, 1, 1))
+    if texture is None:
+        output = tint
+        pin = ''
+    else:
+        uv = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionTextureCoordinate)
+        uv.set_editor_property('u_tiling', 6.0)
+        uv.set_editor_property('v_tiling', 3.0)
+        sample = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionTextureSample)
+        sample.set_editor_property('texture', texture)
+        unreal.MaterialEditingLibrary.connect_material_expressions(uv, '', sample, 'UVs')
+        output = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionMultiply)
+        unreal.MaterialEditingLibrary.connect_material_expressions(sample, 'RGB', output, 'A')
+        unreal.MaterialEditingLibrary.connect_material_expressions(tint, '', output, 'B')
+        pin = ''
     if not unreal.MaterialEditingLibrary.connect_material_property(
-            color, '', unreal.MaterialProperty.MP_EMISSIVE_COLOR):
-        raise RuntimeError('材質の色パラメータを接続できませんでした')
-    errors = unreal.MaterialEditingLibrary.recompile_material(material)
-    if errors:
-        raise RuntimeError('材質のコンパイルに失敗しました: ' + str(errors))
+            output, pin, unreal.MaterialProperty.MP_EMISSIVE_COLOR):
+        raise RuntimeError('発光色の接続に失敗: ' + name)
+    unreal.MaterialEditingLibrary.recompile_material(material)
     if not unreal.EditorAssetLibrary.save_loaded_asset(material):
-        raise RuntimeError('材質を保存できませんでした')
+        raise RuntimeError('材質を保存できませんでした: ' + name)
+    return material
+
+
+unreal.EditorAssetLibrary.make_directory('/Game/Generated')
+textures = generate_all(Path(unreal.Paths.project_saved_dir()) / 'GeneratedTextures')
+create_material('Robot')
+
+for name, file_path in textures.items():
+    create_material(name, import_texture(name, file_path))
 
 map_path = '/Game/Generated/Minimal'
 if not unreal.EditorAssetLibrary.does_asset_exist(map_path):
