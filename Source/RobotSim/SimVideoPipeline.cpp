@@ -103,7 +103,7 @@ void URobotVideoPipeline::ExportFrame(UTextureRenderTarget2D* Texture,
     if (!FFileHelper::SaveArrayToFile(Png, *(Image + TEXT(".tmp")))) return;
     if (!IFileManager::Get().Move(*Image, *(Image + TEXT(".tmp")), true)) return;
     const FString Manifest = FString::Printf(
-        TEXT("{\\\"id\\\":%llu,\\\"capture_sim_s\\\":%.9f,\\\"image\\\":\\\"%s\\\",\\\"width\\\":640,\\\"height\\\":360}"),
+        TEXT("{\"id\":%llu,\"capture_sim_s\":%.9f,\"image\":\"%s\",\"width\":640,\"height\":360}"),
         static_cast<unsigned long long>(Id), ShotTime, *Name);
     const FString Path = FPaths::Combine(Directory, TEXT("latest.json"));
     if (FFileHelper::SaveStringToFile(Manifest, *(Path + TEXT(".tmp")),
