@@ -1,0 +1,27 @@
+name: 基盤テスト
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: C++の制御基盤を検証
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror Tests/test_core.cpp -o /tmp/test-core
+          /tmp/test-core
+          python3 -m py_compile Clients/color_tracker.py Scripts/CreateMap.py
+  powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShellの構文を検証
+        shell: powershell
+        run: |
+          Get-ChildItem Scripts/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          }
