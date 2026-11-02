@@ -29,14 +29,16 @@ ASimGameMode::ASimGameMode()
     DefaultPawnClass=nullptr;
     HUDClass=ASimHUD::StaticClass();
 }
-AActor* ASimGameMode::MakeBox(FVector Location,FVector Size,FLinearColor Color)
+AActor* ASimGameMode::MakeBox(FVector Location,FVector Size,FLinearColor Color,bool bBlockMovement)
 {
     AActor* A=GetWorld()->SpawnActor<AActor>(Location,FRotator::ZeroRotator);
     auto* Mesh=NewObject<UStaticMeshComponent>(A);
     A->SetRootComponent(Mesh);
     Mesh->SetMobility(EComponentMobility::Movable);
     Mesh->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
-    Mesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+    // 平面運動のため、床・背景に衝突判定は不要。床との接触が横移動を遮ることを防ぐ。
+    Mesh->SetCollisionProfileName(bBlockMovement?TEXT("BlockAllDynamic"):TEXT("NoCollision"));
+    if(!bBlockMovement) Mesh->SetCastShadow(false);
     Mesh->RegisterComponent();
     A->SetActorLocation(Location);
     A->SetActorScale3D(Size/100.0);
@@ -68,7 +70,10 @@ void ASimGameMode::BeginPlay()
     SharedWeight=Sanitize(SharedWeight,0.5f,0,1);
     Random.Initialize(Seed);
     bExport=FParse::Param(FCommandLine::Get(),TEXT("ExportFrames"));
-    MakeBox(FVector(0,0,-10),FVector(2000,2000,20),FLinearColor(0.3f,0.3f,0.3f));
+    // カメラが壁の上を向いた場合も真っ黒にならない、衝突しない背景。
+    MakeBox(FVector(0,0,0),FVector(10000,10000,10000),FLinearColor(0.10f,0.16f,0.24f),false);
+    // 運動はXY平面のみ。床の接触判定は壁・障害物のSweepと分離する。
+    MakeBox(FVector(0,0,-10),FVector(2000,2000,20),FLinearColor(0.3f,0.3f,0.3f),false);
     for(int32 Sign : {-1,1}) {
         MakeBox(FVector(Sign*1000,0,100),FVector(20,2000,200),FLinearColor(0.6f,0.6f,0.6f));
         MakeBox(FVector(0,Sign*1000,100),FVector(2000,20,200),FLinearColor(0.6f,0.6f,0.6f));
@@ -90,7 +95,7 @@ void ASimGameMode::BeginPlay()
     Sensor->PostProcessSettings.bOverride_AutoExposureMethod=true;
     Sensor->PostProcessSettings.AutoExposureMethod=EAutoExposureMethod::AEM_Manual;
     Sensor->PostProcessSettings.bOverride_AutoExposureBias=true;
-    Sensor->PostProcessSettings.AutoExposureBias=8;
+    Sensor->PostProcessSettings.AutoExposureBias=0;
     Sensor->RegisterComponent();
     Sensor->HideActorComponents(Robot);
     // 最大遅延1.2秒・20fpsに対し十分な余裕。待機画像を上書きしない。
@@ -166,7 +171,8 @@ void ASimGameMode::Step(double Dt)
     const double Angle=FMath::DegreesToRadians(Robot->GetActorRotation().Yaw+Drive.yawRate*Dt*0.5);
     FHitResult Hit;
     Robot->AddActorWorldOffset(FVector(std::cos(Angle),std::sin(Angle),0)*Drive.speed*Dt,true,&Hit);
-    if(Hit.bBlockingHit) Drive.speed=0;
+    bMovementBlocked=Hit.bBlockingHit;
+    if(bMovementBlocked) Drive.speed=0;
     // 初期版では旋回の形状Sweepは行わない。精密接触の評価対象外。
     Robot->AddActorWorldRotation(FRotator(0,Drive.yawRate*Dt,0));
     Target->SetActorLocation(FVector(400,300*std::sin(SimTime*0.5),25));
@@ -244,7 +250,14 @@ UTextureRenderTarget2D* ASimGameMode::DisplayTexture() const
 FString ASimGameMode::Status() const
 {
     if(!bDebug) return FString();
-    return FString::Printf(TEXT("1:手動 2:共有 3:自動 | モード=%d | 指令 %.0fms 映像 %.0fms | 画像経過 %.0fms | F1:表示切替"),Mode,CommandDelayMs,VideoDelayMs,(SimTime-DisplayShot)*1000);
+    const FVector Position=Robot?Robot->GetActorLocation():FVector::ZeroVector;
+    return FString::Printf(
+        TEXT("1:手動 2:共有 3:自動 | モード=%d | W/S:前後 A/D:旋回 | Space:非常停止\n")
+        TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
+        TEXT("指令 %.0fms 映像 %.0fms | 画像経過 %.0fms | F1:表示切替"),
+        Mode,Manual.throttle,Applied.throttle,Drive.speed,Position.X,Position.Y,
+        bMovementBlocked?TEXT("はい"):TEXT("いいえ"),
+        CommandDelayMs,VideoDelayMs,(SimTime-DisplayShot)*1000);
 }
 void ASimGameMode::EndPlay(const EEndPlayReason::Type Reason)
 {
@@ -262,5 +275,10 @@ void ASimHUD::DrawHUD()
     const float H=W*9.0f/16.0f;
     if(auto* Texture=Sim->DisplayTexture()) DrawTexture(Texture,(Canvas->SizeX-W)/2,(Canvas->SizeY-H)/2,W,H,0,0,1,1,FLinearColor::White,BLEND_Opaque);
     const FString Info=Sim->Status();
-    if(!Info.IsEmpty()) DrawText(Info,FLinearColor::Yellow,16,16,nullptr,1.0f);
+    if(!Info.IsEmpty()) {
+        TArray<FString> Lines;
+        Info.ParseIntoArrayLines(Lines,false);
+        for(int32 I=0;I<Lines.Num();++I)
+            DrawText(Lines[I],FLinearColor::Yellow,16,16+24*I,nullptr,1.0f);
+    }
 }

@@ -23,7 +23,7 @@ public:
     UTextureRenderTarget2D* DisplayTexture() const;
     FString Status() const;
 private:
-    AActor* MakeBox(FVector Location, FVector Size, FLinearColor Color);
+    AActor* MakeBox(FVector Location, FVector Size, FLinearColor Color, bool bBlockMovement = true);
     void Step(double Dt);
     void ReceiveExternal();
     void CaptureFrame();
@@ -41,7 +41,7 @@ private:
     double LastSequence=-1, DisplayShot=0, NextLog=0, LastManual=0;
     float CommandDelayMs=100, VideoDelayMs=100, SharedWeight=0.5f;
     float JitterMs=0, LossRate=0;
-    bool bExport=false, bDebug=false;
+    bool bExport=false, bDebug=false, bMovementBlocked=false;
     int32 Seed=12345;
     FRandomStream Random;
     RobotSim::DelayQueue<RobotSim::Command> Commands;
