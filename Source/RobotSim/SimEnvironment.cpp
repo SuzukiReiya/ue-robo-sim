@@ -3,6 +3,8 @@
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/DirectionalLight.h"
+#include "Components/DirectionalLightComponent.h"
 
 namespace {
 AActor* AddBox(UWorld* World, FVector Location, FVector Size, FLinearColor Tint,
@@ -15,7 +17,8 @@ AActor* AddBox(UWorld* World, FVector Location, FVector Size, FLinearColor Tint,
     Mesh->SetMobility(EComponentMobility::Movable);
     Mesh->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
     Mesh->SetCollisionProfileName(bCollision ? TEXT("BlockAllDynamic") : TEXT("NoCollision"));
-    Mesh->SetCastShadow(false);
+    // 床・外側設備は描画のみ。衝突物の立体的な陰影は許可する。
+    Mesh->SetCastShadow(bCollision);
     Mesh->RegisterComponent();
     Actor->SetActorLocation(Location);
     Actor->SetActorScale3D(Size / 100.0);
@@ -32,18 +35,31 @@ AActor* AddBox(UWorld* World, FVector Location, FVector Size, FLinearColor Tint,
 
 void FSimEnvironment::Build(UWorld* World, AActor*& OutRobot, AActor*& OutTarget)
 {
+    // PBR材質用の屋内基準照明。Lumen無効のため、主光＋影を落とさない補助光。
+    auto AddLight = [World](FRotator Rotation, float Intensity, bool bShadows) {
+        if (auto* Light = World->SpawnActor<ADirectionalLight>(
+                FVector(0, 0, 800), Rotation)) {
+            auto* Component = Light->GetLightComponent();
+            Component->SetMobility(EComponentMobility::Movable);
+            Component->SetIntensity(Intensity);
+            Component->SetCastShadows(bShadows);
+        }
+    };
+    AddLight(FRotator(-70, -30, 0), 10.0f, true);
+    AddLight(FRotator(-35, 135, 0), 4.0f, false);
+    AddLight(FRotator(35, -15, 0), 2.5f, false);
     // 外側は34m四方の屋内ホール。フィールドより低い床と構造壁を配置する。
     AddBox(World, FVector(0, 0, -18), FVector(3600, 3600, 16),
-           FLinearColor(0.48f, 0.53f, 0.58f), TEXT("M_Concrete"));
+           FLinearColor(0.48f, 0.53f, 0.58f), TEXT("M_Concrete_PBRv2"));
     // 運動面はXY固定なので床は表示専用。これによりSweepの干渉を防止。
     AddBox(World, FVector(0, 0, -8), FVector(2000, 2000, 16),
-           FLinearColor(0.63f, 0.68f, 0.68f), TEXT("M_Floor"));
+           FLinearColor(0.63f, 0.68f, 0.68f), TEXT("M_Floor_PBRv2"));
     // プラダン風の板で囲んだ20mフィールド。上から屋内構造も見える高さ。
     for (int32 Sign : {-1, 1}) {
         AddBox(World, FVector(Sign * 1000, 0, 70), FVector(20, 2000, 140),
-               FLinearColor(0.68f, 0.76f, 0.83f), TEXT("M_Corrugated"), true);
+               FLinearColor(0.68f, 0.76f, 0.83f), TEXT("M_Corrugated_PBRv2"), true);
         AddBox(World, FVector(0, Sign * 1000, 70), FVector(2000, 20, 140),
-               FLinearColor(0.63f, 0.72f, 0.80f), TEXT("M_Corrugated"), true);
+               FLinearColor(0.63f, 0.72f, 0.80f), TEXT("M_Corrugated_PBRv2"), true);
     }
     // 継ぎ目、支柱、保護材を入れて人工的な単一反復模様を避ける。
     for (int32 X = -800; X <= 800; X += 400) {
@@ -59,9 +75,9 @@ void FSimEnvironment::Build(UWorld* World, AActor*& OutRobot, AActor*& OutTarget
                FLinearColor(0.22f, 0.25f, 0.28f), TEXT("M_Robot"), true);
     }
     AddBox(World, FVector(250, 350, 60), FVector(120, 160, 120),
-           FLinearColor(0.75f, 0.65f, 0.45f), TEXT("M_Corrugated"), true);
+           FLinearColor(0.75f, 0.65f, 0.45f), TEXT("M_Corrugated_PBRv2"), true);
     AddBox(World, FVector(-200, -340, 42), FVector(160, 90, 84),
-           FLinearColor(0.53f, 0.60f, 0.65f), TEXT("M_Concrete"), true);
+           FLinearColor(0.53f, 0.60f, 0.65f), TEXT("M_Concrete_PBRv2"), true);
     // フィールド内の床ラインとマーク。衝突しない薄い帯。
     for (int32 Y : {-570, 470}) {
         AddBox(World, FVector(0, Y, 0.4), FVector(1420, 6, 0.8),
@@ -71,12 +87,12 @@ void FSimEnvironment::Build(UWorld* World, AActor*& OutRobot, AActor*& OutTarget
     // ホール外周の壁・天井と梁。フィールド境界の向こう側にも奥行きを与える。
     for (int32 Sign : {-1, 1}) {
         AddBox(World, FVector(Sign * 1800, 0, 360), FVector(25, 3600, 720),
-               FLinearColor(0.71f, 0.72f, 0.69f), TEXT("M_Concrete"));
+               FLinearColor(0.71f, 0.72f, 0.69f), TEXT("M_Concrete_PBRv2"));
         AddBox(World, FVector(0, Sign * 1800, 360), FVector(3600, 25, 720),
-               FLinearColor(0.64f, 0.69f, 0.73f), TEXT("M_Concrete"));
+               FLinearColor(0.64f, 0.69f, 0.73f), TEXT("M_Concrete_PBRv2"));
     }
     AddBox(World, FVector(0, 0, 730), FVector(3600, 3600, 24),
-           FLinearColor(0.58f, 0.65f, 0.69f), TEXT("M_Corrugated"));
+           FLinearColor(0.58f, 0.65f, 0.69f), TEXT("M_Corrugated_PBRv2"));
     for (int32 X : {-1500, 0, 1500}) {
         AddBox(World, FVector(X, 0, 675), FVector(24, 3550, 55),
                FLinearColor(0.27f, 0.35f, 0.40f), TEXT("M_Robot"));
@@ -90,11 +106,11 @@ void FSimEnvironment::Build(UWorld* World, AActor*& OutRobot, AActor*& OutTarget
         const float Y = -850.0f + Index * 425.0f;
         AddBox(World, FVector(1430, Y, 65), FVector(220, 150, 130),
                FLinearColor(0.61f + 0.04f * (Index % 2), 0.52f, 0.32f),
-               TEXT("M_Corrugated"));
+               TEXT("M_Corrugated_PBRv2"));
         AddBox(World, FVector(-1440, Y, 95), FVector(190, 110, 190),
-               FLinearColor(0.48f, 0.57f, 0.67f), TEXT("M_Concrete"));
+               FLinearColor(0.48f, 0.57f, 0.67f), TEXT("M_Concrete_PBRv2"));
     }
-    // 天井の白色照明パネルはUnlitでも視認できる。
+    // 天井照明パネルと追跡対象は、検証のため単色Unlitを維持。
     for (int32 X : {-900, 900}) for (int32 Y : {-900, 900}) {
         AddBox(World, FVector(X, Y, 711), FVector(360, 60, 4),
                FLinearColor(1.0f, 0.97f, 0.84f), TEXT("M_Robot"));
