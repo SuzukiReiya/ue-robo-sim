@@ -47,7 +47,7 @@ def create_material(name, texture=None):
     else:
         uv = unreal.MaterialEditingLibrary.create_material_expression(
             material, unreal.MaterialExpressionTextureCoordinate)
-        uv.set_editor_property('u_tiling', 6.0)
+        uv.set_editor_property('u_tiling', 12.0 if name == 'Corrugated' else 6.0)
         uv.set_editor_property('v_tiling', 3.0)
         sample = unreal.MaterialEditingLibrary.create_material_expression(
             material, unreal.MaterialExpressionTextureSample)
