@@ -18,5 +18,11 @@ int main() {
     assert(a.speed>149&&a.speed<150);
     for(int i=0;i<240;++i) a.step({0,0},1.0/120,150,120,0.15);
     assert(std::abs(a.speed)<0.001);
-    std::cout<<"遅延境界・順序逆転・初期化・共有制御・機体応答: 成功\n";
+    // 前進・後退の両方向に速度が立ち上がり、符号を反転できること。
+    RobotSim::Drive reverse;
+    for(int i=0;i<120;++i) reverse.step({-1,0},1.0/120,150,120,0.15);
+    assert(reverse.speed < -149 && reverse.speed > -150);
+    for(int i=0;i<120;++i) reverse.step({1,0},1.0/120,150,120,0.15);
+    assert(reverse.speed > 149 && reverse.speed < 150);
+    std::cout<<"遅延境界・順序逆転・初期化・共有制御・前後進・機体応答: 成功\n";
 }
