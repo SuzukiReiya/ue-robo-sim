@@ -1,7 +1,6 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
-#include "GameFramework/HUD.h"
 #include "SimControl.h"
 #include "SimVehicle.h"
 #include "Serialization/Archive.h"
@@ -44,10 +43,3 @@ private:
     FString RunDirectory;
 };
 
-UCLASS()
-class ROBOTSIM_API ASimHUD : public AHUD
-{
-    GENERATED_BODY()
-public:
-    virtual void DrawHUD() override;
-};
