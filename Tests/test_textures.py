@@ -24,7 +24,8 @@ def load_rgb(path):
     raw = zlib.decompress(b''.join(chunks))
     assert len(raw) == SIZE * (1 + 3 * SIZE)
     assert all(raw[i * (1 + 3 * SIZE)] == 0 for i in range(SIZE))
-    return raw
+    stride = 1 + 3 * SIZE
+    return b''.join(raw[y * stride + 1:(y + 1) * stride] for y in range(SIZE))
 
 
 def main():
