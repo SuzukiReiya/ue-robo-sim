@@ -120,7 +120,7 @@ void ASimGameMode::Step(double Dt)
         const RobotSim::Command Manual = Controller.manual();
         const RobotSim::Command External = Controller.freshExternal(SimTime);
         const FString Line = FString::Printf(
-            TEXT("%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%.6f\\n"),
+            TEXT("%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%.6f\n"),
             SimTime, P.X, P.Y, Robot->GetActorRotation().Yaw,
             Vehicle.Speed(), Vehicle.YawRate(),
             Manual.throttle, Manual.turn, External.throttle, External.turn,
@@ -157,8 +157,8 @@ FString ASimGameMode::Status() const
     if (!bDebug) return FString();
     const FVector Position = Robot ? Robot->GetActorLocation() : FVector::ZeroVector;
     return FString::Printf(
-        TEXT("1:手動 2:共有 3:自動 | モード=%d | W/S:前後 A/D:旋回 | Space:非常停止\\n")
-        TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\\n")
+        TEXT("1:手動 2:共有 3:自動 | モード=%d | W/S:前後 A/D:旋回 | Space:非常停止\n")
+        TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
         TEXT("指令 %.0fms 映像 %.0fms | 画像経過 %.0fms | F1:表示切替"),
         static_cast<int32>(Controller.mode()),
         Controller.manual().throttle, Controller.applied().throttle,
