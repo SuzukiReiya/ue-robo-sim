@@ -53,7 +53,11 @@ void ASimGameMode::BeginPlay()
     Random.Initialize(Seed);
     bExport=FParse::Param(FCommandLine::Get(),TEXT("ExportFrames"));
     // 独立した環境・プラント・映像モジュールを初期化する。
-    FSimEnvironment::Build(GetWorld(), Robot, Target);
+    AActor* SpawnedRobot = nullptr;
+    AActor* SpawnedTarget = nullptr;
+    FSimEnvironment::Build(GetWorld(), SpawnedRobot, SpawnedTarget);
+    Robot = SpawnedRobot;
+    Target = SpawnedTarget;
     Vehicle.Initialize(Robot);
     Video = NewObject<URobotVideoPipeline>(this);
     Video->Initialize(Robot, bExport);
