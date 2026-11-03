@@ -3,10 +3,13 @@
 #include "GameFramework/GameModeBase.h"
 #include "SimControl.h"
 #include "SimVehicle.h"
+#include "SimInputBindings.h"
+#include "SimWeapon.h"
 #include "Serialization/Archive.h"
 #include "SimGameMode.generated.h"
 
 class URobotVideoPipeline;
+class USimSettingsWidget;
 class UTextureRenderTarget2D;
 class FSocket;
 class FArchive;
@@ -23,19 +26,29 @@ public:
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     UTextureRenderTarget2D* DisplayTexture() const;
     FString Status() const;
+    void SetSimulationPaused(bool bPause);
+    bool ApplyInputBindings(const RobotSim::InputBindings& NewBindings);
 private:
     void Step(double Dt);
     void ReceiveExternal();
     void SwitchMode(RobotSim::Mode NewMode);
+    void LoadInputBindings();
+    void FlushExternal();
+    FString BindingsPath() const;
     UPROPERTY() TObjectPtr<AActor> Robot;
     UPROPERTY() TObjectPtr<AActor> Target;
     UPROPERTY() TObjectPtr<URobotVideoPipeline> Video;
+    UPROPERTY() TObjectPtr<USimSettingsWidget> SettingsWidget;
     RobotSim::CommandRouter Controller;
     FSimVehicle Vehicle;
+    FSimWeapon Weapon;
+    RobotSim::InputBindings Bindings;
+    RobotSim::RawInput RawInput;
+    RobotSim::OperatorActions Actions;
     double SimTime = 0, Accumulator = 0, NextInput = 0, NextLog = 0;
     float CommandDelayMs = 100, VideoDelayMs = 100, SharedWeight = 0.5f;
     float JitterMs = 0, LossRate = 0;
-    bool bExport = false, bDebug = false;
+    bool bExport = false, bDebug = false, bPaused = false;
     int32 Seed = 12345;
     FRandomStream Random;
     FSocket* Socket = nullptr;
