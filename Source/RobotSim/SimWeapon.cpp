@@ -1,6 +1,7 @@
 #include "SimWeapon.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
+#include "Components/SceneComponent.h"
 #include "GameFramework/Actor.h"
 
 void FSimWeapon::Advance(double Dt)
@@ -14,7 +15,8 @@ bool FSimWeapon::TryFire(UWorld* World, AActor* Robot, double SimTime, bool bTri
                          const FRotator& BodySway, double RecoilDegrees,
                          FRandomStream& Random)
 {
-    if (!World || !Robot || !bTrigger || SimTime + 1e-9 < NextFireTime)
+    if (!World || !Robot || !Muzzle.IsValid() || !bTrigger ||
+        SimTime + 1e-9 < NextFireTime)
         return false;
     NextFireTime = SimTime + 0.25;
     ++Count;
@@ -22,9 +24,9 @@ bool FSimWeapon::TryFire(UWorld* World, AActor* Robot, double SimTime, bool bTri
     const double DispersionYaw = Random.FRandRange(-RecoilDegrees, RecoilDegrees);
     const FRotator Offset = BodySway + Recoil +
         FRotator(DispersionPitch, DispersionYaw, 0);
-    const FVector Direction = (Robot->GetActorRotation() + Offset).Vector();
-    const FVector Start = Robot->GetActorLocation() +
-        Direction * 11.0f + FVector(0, 0, 7.0f);
+    // 独立した砲口の座標と角度を使用。カメラ中心からは発射しない。
+    const FVector Start = Muzzle->GetComponentLocation();
+    const FVector Direction = (Muzzle->GetComponentRotation() + Offset).Vector();
     const FVector End = Start + Direction * 2500.0f;
     FCollisionQueryParams Query(SCENE_QUERY_STAT(SimFire), false, Robot);
     FHitResult Hit;
