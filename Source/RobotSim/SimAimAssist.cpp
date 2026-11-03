@@ -17,9 +17,9 @@ RobotSim::Aim::Selection FSimAimAssist::Find(
 {
     if (!World || !Viewer) return {};
     std::vector<RobotSim::Aim::Candidate> Candidates;
-    const AActor* Enemies[] = {FirstTarget, SecondTarget};
+    AActor* const Enemies[] = {FirstTarget, SecondTarget};
     for (int32 TargetIndex=0; TargetIndex<2; ++TargetIndex) {
-        auto* Enemy = const_cast<AActor*>(Enemies[TargetIndex]);
+        AActor* Enemy = Enemies[TargetIndex];
         if (!Enemy) continue;
         TArray<UBoxComponent*> Sensors;
         Enemy->GetComponents<UBoxComponent>(Sensors);
