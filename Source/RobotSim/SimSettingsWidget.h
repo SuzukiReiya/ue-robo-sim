@@ -54,6 +54,10 @@ private:
     UFUNCTION() void TurnSensitivityChanged(float Value);
     UFUNCTION() void BasicCommandDelayChanged(float Value);
     UFUNCTION() void BasicVideoDelayChanged(float Value);
+    UFUNCTION() void MoveSensitivityCommitted(float Value, ETextCommit::Type Method);
+    UFUNCTION() void TurnSensitivityCommitted(float Value, ETextCommit::Type Method);
+    UFUNCTION() void BasicCommandDelayCommitted(float Value, ETextCommit::Type Method);
+    UFUNCTION() void BasicVideoDelayCommitted(float Value, ETextCommit::Type Method);
     UFUNCTION() void PanelProfileChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void SaveAndResume();
     UFUNCTION() void Resume();
