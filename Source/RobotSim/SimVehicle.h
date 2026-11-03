@@ -20,7 +20,11 @@ public:
         if (!Robot.IsValid()) return;
         // 操舵入力解除後もYaw角速度を時定数に従って減衰させる。
         // 走行の滑りと旋回の慣性は別パラメータで独立評価できる。
-        Motion.step(Command, Dt, 150.0, 120.0, 0.15,
+        // 感度は指令変換だけでなく運動モデルの速度上限へ反映する。
+        // 1倍＝並進150cm/s・旋回120deg/s。
+        Motion.step(Command, Dt,
+                    Config.maxMoveSpeedCmPerSec(),
+                    Config.maxTurnRateDegPerSec(), 0.15,
                     FMath::Max(0.001, Config.turnInertiaMs / 1000.0));
         const double Yaw = Robot->GetActorRotation().Yaw + Motion.yawRate * Dt * 0.5;
         const double Angle = FMath::DegreesToRadians(Yaw);
