@@ -147,11 +147,12 @@ void ASimGameMode::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     if(auto* PC=GetWorld()->GetFirstPlayerController()) {
+        if (!PC->IsInputKeyDown(EKeys::Escape)) bAwaitEscapeRelease = false;
         if(PC->WasInputKeyJustPressed(EKeys::One)) SwitchMode(RobotSim::Mode::Manual);
         if(PC->WasInputKeyJustPressed(EKeys::Two)) SwitchMode(RobotSim::Mode::Shared);
         if(PC->WasInputKeyJustPressed(EKeys::Three)) SwitchMode(RobotSim::Mode::Automatic);
         if(PC->WasInputKeyJustPressed(EKeys::F1)) bDebug=!bDebug;
-        if (!bPaused && PC->WasInputKeyJustPressed(EKeys::Escape)) {
+        if (!bPaused && !bAwaitEscapeRelease && PC->WasInputKeyJustPressed(EKeys::Escape)) {
             SetSimulationPaused(true);
             return;
         }
@@ -271,6 +272,7 @@ void ASimGameMode::SetSimulationPaused(bool bPause)
     APlayerController* PC = GetWorld()->GetFirstPlayerController();
     if (!PC) return;
     bPaused = bPause;
+    bAwaitEscapeRelease = true;
     Controller.emergencyStop();
     Actions = {};
     RawInput = {};
