@@ -1,5 +1,6 @@
 #pragma once
 #include "CoreMinimal.h"
+#include "Components/SceneComponent.h"
 class AActor;
 class USceneComponent;
 
