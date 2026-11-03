@@ -168,6 +168,19 @@ void ASimGameMode::Tick(float DeltaSeconds)
     RawInput.held = FrameInput.held;
     RawInput.mouseX += FrameInput.mouseX;
     RawInput.mouseY += FrameInput.mouseY;
+    // メニューをクリックして閉じた直後のクリック・マウス位置復帰を誤操作にしない。
+    if (bSkipMouseFrame) {
+        RawInput.mouseX = 0;
+        RawInput.mouseY = 0;
+        bSkipMouseFrame = false;
+    }
+    if (bAwaitMouseRelease) {
+        const bool bLeft = FrameInput.held[RobotSim::index(RobotSim::InputSource::MouseButtonLeft)];
+        const bool bRight = FrameInput.held[RobotSim::index(RobotSim::InputSource::MouseButtonRight)];
+        RawInput.held[RobotSim::index(RobotSim::InputSource::MouseButtonLeft)] = false;
+        RawInput.held[RobotSim::index(RobotSim::InputSource::MouseButtonRight)] = false;
+        if (!bLeft && !bRight) bAwaitMouseRelease = false;
+    }
     ReceiveExternal();
     // 重いフレームでは追い付ける分だけ進め、破棄時間をログに明示。
     if(DeltaSeconds>0.25f) UE_LOG(LogTemp,Warning,TEXT("SIM_OVERRUN: %.6f秒を破棄。実時間評価からこの試行を除外してください。"),DeltaSeconds-0.25f);
@@ -305,6 +318,8 @@ void ASimGameMode::SetSimulationPaused(bool bPause)
         SettingsWidget->SetKeyboardFocus();
     } else {
         SettingsWidget->RemoveFromParent();
+        bAwaitMouseRelease = true;
+        bSkipMouseFrame = true;
         PC->bShowMouseCursor = false;
         PC->SetInputMode(FInputModeGameOnly());
         FlushExternal();
