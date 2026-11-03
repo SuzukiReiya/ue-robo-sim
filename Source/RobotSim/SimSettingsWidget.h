@@ -15,7 +15,7 @@ class ROBOTSIM_API USimSettingsWidget : public UUserWidget
 public:
     void SetBindings(const RobotSim::InputBindings& Current);
 protected:
-    virtual void NativeConstruct() override;
+    virtual void NativeOnInitialized() override;
     virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 private:
     RobotSim::InputBindings Working;
