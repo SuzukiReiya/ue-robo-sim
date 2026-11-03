@@ -18,7 +18,10 @@ public:
     void Advance(RobotSim::Command Command, double Dt, const RobotSim::Tuning& Config)
     {
         if (!Robot.IsValid()) return;
-        Motion.step(Command, Dt, 150.0, 120.0, 0.15);
+        // 操舵入力解除後もYaw角速度を時定数に従って減衰させる。
+        // 走行の滑りと旋回の慣性は別パラメータで独立評価できる。
+        Motion.step(Command, Dt, 150.0, 120.0, 0.15,
+                    FMath::Max(0.001, Config.turnInertiaMs / 1000.0));
         const double Yaw = Robot->GetActorRotation().Yaw + Motion.yawRate * Dt * 0.5;
         const double Angle = FMath::DegreesToRadians(Yaw);
         const FVector Forward(FMath::Cos(Angle), FMath::Sin(Angle), 0);
