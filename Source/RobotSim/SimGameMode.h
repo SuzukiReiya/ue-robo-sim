@@ -6,6 +6,8 @@
 #include "SimInputBindings.h"
 #include "SimWeapon.h"
 #include "SimHitPanels.h"
+#include "SimAimRig.h"
+#include "SimAimAssist.h"
 #include "Serialization/Archive.h"
 #include "SimGameMode.generated.h"
 
@@ -39,17 +41,21 @@ private:
     FString BindingsPath() const;
     UPROPERTY() TObjectPtr<AActor> Robot;
     UPROPERTY() TObjectPtr<AActor> Target;
+    UPROPERTY() TObjectPtr<AActor> SpinningTarget;
     UPROPERTY() TObjectPtr<URobotVideoPipeline> Video;
     UPROPERTY() TObjectPtr<USimSettingsWidget> SettingsWidget;
     RobotSim::CommandRouter Controller;
     FSimVehicle Vehicle;
+    FSimAimRig AimRig;
     FSimWeapon Weapon;
     FSimHitPanels HitPanels;
+    FSimHitPanels SpinningHitPanels;
     RobotSim::InputBindings Bindings;
     RobotSim::Tuning Tuning;
     RobotSim::RawInput RawInput;
     RobotSim::OperatorActions Actions;
     double SimTime = 0, Accumulator = 0, NextInput = 0, NextLog = 0;
+    int32 SelectedAssistPanel = -1;
     float CommandDelayMs = 100, VideoDelayMs = 100, SharedWeight = 0.5f;
     float JitterMs = 0, LossRate = 0;
     bool bExport = false, bDebug = false, bPaused = false, bAwaitEscapeRelease = false, bAwaitMouseRelease = false, bSkipMouseFrame = false;
