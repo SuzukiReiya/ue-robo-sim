@@ -14,9 +14,9 @@
 #include "InputCoreTypes.h"
 #include "Input/Reply.h"
 
-void USimSettingsWidget::NativeConstruct()
+void USimSettingsWidget::NativeOnInitialized()
 {
-    Super::NativeConstruct();
+    Super::NativeOnInitialized();
     bIsFocusable = true;
     if (WidgetTree->RootWidget) return;
 
