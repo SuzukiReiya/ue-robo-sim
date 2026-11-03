@@ -21,7 +21,22 @@ struct Candidate {
     int id = -1;
     Vec3 center;
     bool unobstructed = false;
+    Vec3 outwardNormal; // パネルの発光面が向く方向（ワールド座標）
 };
+// パネル法線と「パネル→自機カメラ」の方向のなす角度を判定。
+// パネルの裏面や横向きは、画面中央・近距離にあっても候補から除外。
+inline bool facesViewer(Vec3 panelCenter, Vec3 outwardNormal, Vec3 viewer,
+                        double maxFacingAngleDeg) {
+    if (!std::isfinite(maxFacingAngleDeg) ||
+        maxFacingAngleDeg < 0.0 || maxFacingAngleDeg > 90.0) return false;
+    const Vec3 towardViewer = viewer - panelCenter;
+    const double normalLength = length(outwardNormal);
+    const double viewerDistance = length(towardViewer);
+    if (!(normalLength > 1e-8 && viewerDistance > 1e-8)) return false;
+    const double cosine = dot(outwardNormal,towardViewer) /
+        (normalLength * viewerDistance);
+    return cosine + 1e-10 >= std::cos(radians(maxFacingAngleDeg));
+}
 struct Selection {
     int id = -1;
     double score = 1e10;
@@ -34,10 +49,13 @@ struct Selection {
 inline Selection select(Vec3 camera, double cameraYawDeg, double cameraPitchDeg,
                         Vec3 muzzle, const std::vector<Candidate>& candidates,
                         double horizontalFovDeg = 90.0, double aspect = 640.0/360.0,
-                        double maxDistanceCm = 600.0, double maxCenterRadius = 0.35) {
+                        double maxDistanceCm = 600.0, double maxCenterRadius = 0.35,
+                        double maxFacingAngleDeg = 45.0) {
     Selection best;
     if (!(aspect > 0 && horizontalFovDeg > 0 && horizontalFovDeg < 180 &&
-          maxDistanceCm > 0 && maxCenterRadius > 0)) return best;
+          maxDistanceCm > 0 && maxCenterRadius > 0 &&
+          std::isfinite(maxFacingAngleDeg) && maxFacingAngleDeg >= 0 &&
+          maxFacingAngleDeg <= 90)) return best;
     const double y = radians(cameraYawDeg), p = radians(cameraPitchDeg);
     const Vec3 forward{std::cos(y)*std::cos(p), std::sin(y)*std::cos(p), std::sin(p)};
     const Vec3 right{-std::sin(y), std::cos(y), 0};
@@ -45,7 +63,9 @@ inline Selection select(Vec3 camera, double cameraYawDeg, double cameraPitchDeg,
     const double tanHalfHorizontal = std::tan(radians(horizontalFovDeg) * 0.5);
     const double tanHalfVertical = tanHalfHorizontal / aspect;
     for (const auto& candidate : candidates) {
-        if (!candidate.unobstructed) continue;
+        if (!candidate.unobstructed ||
+            !facesViewer(candidate.center, candidate.outwardNormal,
+                         camera, maxFacingAngleDeg)) continue;
         const Vec3 v = candidate.center - camera;
         const double distance = length(v);
         const double depth = dot(v,forward);
