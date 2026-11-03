@@ -125,9 +125,10 @@ void USimSettingsWidget::NativeOnInitialized()
         ->SetPadding(FMargin(5, 10, 5, 3));
     const TCHAR* Titles[] = {
         TEXT("前進"), TEXT("後退"), TEXT("左平行移動"), TEXT("右平行移動"),
-        TEXT("左旋回"), TEXT("右旋回"), TEXT("射撃")
+        TEXT("左旋回"), TEXT("右旋回"), TEXT("射撃"),
+        TEXT("砲身ピッチ上"), TEXT("砲身ピッチ下"), TEXT("照準補正（押している間）")
     };
-    for (int32 I=0; I<7; ++I) {
+    for (int32 I=0; I<10; ++I) {
         auto* Row = MakeRow(Titles[I]);
         auto* Combo = WidgetTree->ConstructWidget<UComboBoxString>();
         // 既定テーマの暗背景に黒文字が重なるのを防ぐ。
@@ -151,8 +152,11 @@ void USimSettingsWidget::NativeOnInitialized()
     Combos[4]->OnSelectionChanged.AddDynamic(this, &USimSettingsWidget::LeftChanged);
     Combos[5]->OnSelectionChanged.AddDynamic(this, &USimSettingsWidget::RightChanged);
     Combos[6]->OnSelectionChanged.AddDynamic(this, &USimSettingsWidget::FireChanged);
+    Combos[7]->OnSelectionChanged.AddDynamic(this, &USimSettingsWidget::PitchUpChanged);
+    Combos[8]->OnSelectionChanged.AddDynamic(this, &USimSettingsWidget::PitchDownChanged);
+    Combos[9]->OnSelectionChanged.AddDynamic(this, &USimSettingsWidget::AssistChanged);
     Contents->AddChildToVerticalBox(MakeLabel(
-        TEXT("MouseLeft/Right/Up/Down＝マウス移動方向、MouseLMB/RMB＝クリック"), 12))
+        TEXT("マウス上下＝砲身ピッチ、Shift長押し＝照準補正。割当変更可能"), 12))
         ->SetPadding(FMargin(5, 5));
 
     Contents->AddChildToVerticalBox(MakeLabel(TEXT("■ 詳細設定（物理・映像）"), 17))
@@ -238,7 +242,7 @@ void USimSettingsWidget::SetSettings(const RobotSim::InputBindings& Current,
 
 void USimSettingsWidget::Refresh()
 {
-    if (Combos.Num() != 7 || Numbers.Num() != 6 || BasicNumbers.Num() != 4 ||
+    if (Combos.Num() != 10 || Numbers.Num() != 6 || BasicNumbers.Num() != 4 ||
         BasicSliders.Num() != 4 || !PanelProfileCombo) return;
     bUpdating = true;
     const RobotSim::InputSource Keys[] = {
@@ -248,9 +252,12 @@ void USimSettingsWidget::Refresh()
         Working.strafeRight,
         Working.turnLeft,
         Working.turnRight,
-        Working.fire
+        Working.fire,
+        Working.pitchUp,
+        Working.pitchDown,
+        Working.aimAssist
     };
-    for (int32 I=0; I<7; ++I)
+    for (int32 I=0; I<10; ++I)
         Combos[I]->SetSelectedOption(UTF8_TO_TCHAR(RobotSim::sourceToken(Keys[I])));
     const double BasicValues[] = {
         WorkingTuning.moveSensitivity, WorkingTuning.turnSensitivity,
@@ -289,6 +296,9 @@ void USimSettingsWidget::OnSelection(int32 Index, const FString& Value)
     case 4: Working.turnLeft = Key; break;
     case 5: Working.turnRight = Key; break;
     case 6: Working.fire = Key; break;
+    case 7: Working.pitchUp = Key; break;
+    case 8: Working.pitchDown = Key; break;
+    case 9: Working.aimAssist = Key; break;
     default: return;
     }
     Refresh();
@@ -348,6 +358,9 @@ void USimSettingsWidget::StrafeRightChanged(FString V, ESelectInfo::Type) { OnSe
 void USimSettingsWidget::LeftChanged(FString V, ESelectInfo::Type) { OnSelection(4, V); }
 void USimSettingsWidget::RightChanged(FString V, ESelectInfo::Type) { OnSelection(5, V); }
 void USimSettingsWidget::FireChanged(FString V, ESelectInfo::Type) { OnSelection(6, V); }
+void USimSettingsWidget::PitchUpChanged(FString V, ESelectInfo::Type) { OnSelection(7, V); }
+void USimSettingsWidget::PitchDownChanged(FString V, ESelectInfo::Type) { OnSelection(8, V); }
+void USimSettingsWidget::AssistChanged(FString V, ESelectInfo::Type) { OnSelection(9, V); }
 void USimSettingsWidget::MouseButtonChanged(float V) { OnNumber(0, V); }
 void USimSettingsWidget::BodySwayChanged(float V) { OnNumber(1, V); }
 void USimSettingsWidget::RecoilChanged(float V) { OnNumber(2, V); }
