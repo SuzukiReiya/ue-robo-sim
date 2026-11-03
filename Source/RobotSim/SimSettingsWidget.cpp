@@ -141,6 +141,7 @@ void USimSettingsWidget::NativeOnInitialized()
     auto* PanelRow = MakeRow(TEXT("敵機ヒットパネルの高さ配置"));
     PanelProfileCombo = WidgetTree->ConstructWidget<UComboBoxString>();
     PanelProfileCombo->SetItemStyle(Combos[0]->GetItemStyle());
+    PanelProfileCombo->ForegroundColor = FSlateColor(FLinearColor::White);
     PanelProfileCombo->SetContentPadding(FMargin(9,5));
     PanelProfileCombo->AddOption(TEXT("低: 6cm（四方向）"));
     PanelProfileCombo->AddOption(TEXT("標準: 9cm（四方向）"));
