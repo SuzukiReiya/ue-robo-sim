@@ -61,11 +61,12 @@ void URobotVideoPipeline::Capture(double SimTime, float VideoDelayMs,
 }
 
 void URobotVideoPipeline::Advance(double SimTime, float VideoDelayMs,
-                                  float JitterMs, float LossRate, FRandomStream& Random)
+                                  float JitterMs, float LossRate, FRandomStream& Random,
+                                  double DisplayFps)
 {
     if (SimTime >= NextCapture) {
         Capture(SimTime, VideoDelayMs, JitterMs, LossRate, Random);
-        NextCapture = SimTime + 0.05;
+        NextCapture = SimTime + 1.0 / FMath::Clamp(DisplayFps, 1.0, 60.0);
     }
     for (int32 I = Pending.Num() - 1; I >= 0; --I) {
         const FPendingFrame F = Pending[I];
@@ -109,4 +110,9 @@ void URobotVideoPipeline::ExportFrame(UTextureRenderTarget2D* Texture,
     if (FFileHelper::SaveStringToFile(Manifest, *(Path + TEXT(".tmp")),
                                       FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
         IFileManager::Get().Move(*Path, *(Path + TEXT(".tmp")), true);
+}
+
+void URobotVideoPipeline::SetAimOffset(const FRotator& Offset)
+{
+    if (Sensor) Sensor->SetRelativeRotation(Offset);
 }
