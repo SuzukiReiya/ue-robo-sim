@@ -13,7 +13,7 @@ void URobotVideoPipeline::Initialize(AActor* CameraRobot, bool bEnableExport)
     Sensor = NewObject<USceneCaptureComponent2D>(CameraRobot);
     Sensor->SetupAttachment(CameraRobot->GetRootComponent());
     Sensor->SetAbsolute(false, false, true);
-    Sensor->SetRelativeLocation(FVector(60, 0, 80));
+    Sensor->SetRelativeLocation(FVector(45, 0, 45));
     Sensor->bCaptureEveryFrame = false;
     Sensor->bCaptureOnMovement = false;
     Sensor->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
