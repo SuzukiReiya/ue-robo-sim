@@ -28,7 +28,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'マップ生成に失敗しました。map.logを確認してください。' }
     if (-not $BuildOnly) {
         $Invariant = [Globalization.CultureInfo]::InvariantCulture
-        $RunArgs = @($Project, '/Game/Generated/Minimal', '-game', '-windowed', '-ResX=1280', '-ResY=720', '-d3d11', '-stdout', '-FullStdOutLogOutput', "-CommandDelayMs=$CommandDelayMs", "-VideoDelayMs=$VideoDelayMs", "-JitterMs=$JitterMs", "-LossRate=$($LossRate.ToString($Invariant))", "-SharedWeight=$($SharedWeight.ToString($Invariant))", "-Seed=$Seed")
+        $RunArgs = @($Project, '/Game/Generated/Minimal', '-game', '-windowed', '-ResX=1280', '-ResY=720', '-d3d11', '-stdout', '-FullStdOutLogOutput', "-JitterMs=$JitterMs", "-LossRate=$($LossRate.ToString($Invariant))", "-SharedWeight=$($SharedWeight.ToString($Invariant))", "-Seed=$Seed")
+        # ラグを明示した場合だけ起動時に上書き。省略時はSaved/Configの設定を優先する。
+        if ($PSBoundParameters.ContainsKey('CommandDelayMs')) {
+            $RunArgs += "-CommandDelayMs=$CommandDelayMs"
+        }
+        if ($PSBoundParameters.ContainsKey('VideoDelayMs')) {
+            $RunArgs += "-VideoDelayMs=$VideoDelayMs"
+        }
         if ($ExportFrames) { $RunArgs += '-ExportFrames' }
         & (Join-Path $EngineRoot 'Engine\Binaries\Win64\UnrealEditor.exe') @RunArgs 2>&1 | Tee-Object (Join-Path $Logs 'run.log')
         if ($LASTEXITCODE -ne 0) { throw '起動中にエラーが発生しました。run.logを確認してください。' }

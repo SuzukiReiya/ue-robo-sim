@@ -118,11 +118,40 @@ int main() {
     assert(sideways.lateralSpeed>149 && sideways.speed==0 && sideways.yawRate==0);
     RobotSim::Tuning tweak;
     assert(tweak.valid());
-    tweak.mouseHorizontal=0.2;
+    assert(tweak.moveSensitivity == 1.0 && tweak.turnSensitivity == 1.0);
+    assert(tweak.maxMoveSpeedCmPerSec() == 150.0);
+    assert(tweak.maxTurnRateDegPerSec() == 120.0);
     RobotSim::RawInput horizontal;
     horizontal.mouseX=2;
     RobotSim::InputBindings defaults;
-    assert(RobotSim::mapInput(defaults,horizontal,tweak).movement.turn>0.39);
+    // 操作入力の変換は同一。感度は機体の移動速度・旋回速度へ作用する。
+    assert(std::abs(RobotSim::mapInput(defaults, horizontal, tweak).movement.turn
+                    - (2.0 / 12.0)) < 1e-8);
+    tweak.turnSensitivity = 20.0;
+    tweak.moveSensitivity = 20.0;
+    assert(tweak.valid());
+    assert(tweak.maxMoveSpeedCmPerSec() == 3000.0);
+    assert(tweak.maxTurnRateDegPerSec() == 2400.0);
+    RobotSim::Drive fast;
+    for (int i=0; i<120; ++i)
+        fast.step({1,1,0}, 1.0/120.0,
+                  tweak.maxMoveSpeedCmPerSec(), tweak.maxTurnRateDegPerSec(),0.15);
+    assert(fast.speed > 2990 && fast.yawRate > 2390);
+    tweak.moveSensitivity = 0.1;
+    tweak.turnSensitivity = 0.1;
+    assert(tweak.maxMoveSpeedCmPerSec() == 15.0);
+    assert(tweak.maxTurnRateDegPerSec() == 12.0);
+    tweak.moveSensitivity = 0.09;
+    assert(!tweak.valid());
+    tweak.moveSensitivity = 20.1;
+    assert(!tweak.valid());
+    tweak.moveSensitivity = 1.0;
+    tweak.turnSensitivity = 20.1;
+    assert(!tweak.valid());
+    tweak.turnSensitivity = 1.0;
+    tweak.commandDelayMs = 250.0;
+    tweak.videoDelayMs = 450.0;
+    assert(tweak.valid());
     tweak.mouseButtonStrength=0.4;
     RobotSim::InputBindings clickable;
     clickable.strafeRight=RobotSim::InputSource::MouseButtonRight;
@@ -171,5 +200,5 @@ int main() {
     panelTuning.turnInertiaMs = 450;
     panelTuning.panelPattern = 5;
     assert(!panelTuning.valid());
-    std::cout<<"遅延境界・順序逆転・共有制御・前後進・旋回慣性・被弾パネル高さ・入力割当・機体応答: 成功\n";
+    std::cout<<"遅延境界・順序逆転・共有制御・前後進・感度上限・旋回慣性・被弾パネル高さ・入力割当・機体応答: 成功\n";
 }

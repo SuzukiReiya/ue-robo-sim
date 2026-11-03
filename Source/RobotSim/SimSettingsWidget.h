@@ -2,6 +2,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/ComboBoxString.h"
 #include "Components/SpinBox.h"
+#include "Components/Slider.h"
 #include "SimInputBindings.h"
 #include "SimSettingsWidget.generated.h"
 
@@ -24,12 +25,17 @@ private:
     RobotSim::Tuning WorkingTuning;
     UPROPERTY() TArray<TObjectPtr<UComboBoxString>> Combos;
     UPROPERTY() TArray<TObjectPtr<USpinBox>> Numbers;
+    // 基本操作はスライダー＋値の直接入力で変更。表示順は移動/旋回/操作ラグ/映像ラグ。
+    UPROPERTY() TArray<TObjectPtr<USlider>> BasicSliders;
+    UPROPERTY() TArray<TObjectPtr<USpinBox>> BasicNumbers;
     UPROPERTY() TObjectPtr<UComboBoxString> PanelProfileCombo;
     UPROPERTY() TObjectPtr<UTextBlock> Message;
     UPROPERTY() TObjectPtr<UButton> SaveButton;
     bool bUpdating = false;
     void OnSelection(int32 Index, const FString& Value);
     void OnNumber(int32 Index, float Value);
+    void OnBasicNumber(int32 Index, float Value);
+    void UpdateSaveState();
     void Refresh();
     UFUNCTION() void ForwardChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void BackwardChanged(FString Value, ESelectInfo::Type Selection);
@@ -38,16 +44,20 @@ private:
     UFUNCTION() void LeftChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void RightChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void FireChanged(FString Value, ESelectInfo::Type Selection);
-    UFUNCTION() void MouseHorizontalChanged(float Value);
-    UFUNCTION() void MouseVerticalChanged(float Value);
     UFUNCTION() void MouseButtonChanged(float Value);
     UFUNCTION() void BodySwayChanged(float Value);
     UFUNCTION() void RecoilChanged(float Value);
     UFUNCTION() void SlipChanged(float Value);
-    UFUNCTION() void CommandDelayChanged(float Value);
-    UFUNCTION() void VideoDelayChanged(float Value);
     UFUNCTION() void DisplayFpsChanged(float Value);
     UFUNCTION() void TurnInertiaChanged(float Value);
+    UFUNCTION() void MoveSensitivityChanged(float Value);
+    UFUNCTION() void TurnSensitivityChanged(float Value);
+    UFUNCTION() void BasicCommandDelayChanged(float Value);
+    UFUNCTION() void BasicVideoDelayChanged(float Value);
+    UFUNCTION() void MoveSensitivityCommitted(float Value, ETextCommit::Type Method);
+    UFUNCTION() void TurnSensitivityCommitted(float Value, ETextCommit::Type Method);
+    UFUNCTION() void BasicCommandDelayCommitted(float Value, ETextCommit::Type Method);
+    UFUNCTION() void BasicVideoDelayCommitted(float Value, ETextCommit::Type Method);
     UFUNCTION() void PanelProfileChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void SaveAndResume();
     UFUNCTION() void Resume();

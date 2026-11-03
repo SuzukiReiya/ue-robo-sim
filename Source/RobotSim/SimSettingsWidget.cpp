@@ -62,6 +62,65 @@ void USimSettingsWidget::NativeOnInitialized()
         return Row;
     };
 
+    // よく触る4項目を最上部へ。スライダーと右側の数値入力は同期する。
+    Contents->AddChildToVerticalBox(MakeLabel(TEXT("■ 基本設定"), 17))
+        ->SetPadding(FMargin(5, 10, 5, 3));
+    const TCHAR* BasicTitles[] = {
+        TEXT("移動感度（標準1.0）"),
+        TEXT("旋回感度（標準1.0）"),
+        TEXT("操作ラグ"),
+        TEXT("映像ラグ")
+    };
+    const float BasicMin[] = {0.1f, 0.1f, 0.0f, 0.0f};
+    const float BasicMax[] = {20.0f, 20.0f, 1000.0f, 1000.0f};
+    for (int32 I = 0; I < 4; ++I) {
+        auto* BasicRow = MakeRow(BasicTitles[I]);
+        auto* Control = WidgetTree->ConstructWidget<USlider>();
+        Control->SetMinValue(BasicMin[I]);
+        Control->SetMaxValue(BasicMax[I]);
+        Control->SetStepSize(I < 2 ? 0.1f : 10.0f);
+        Control->SetSliderBarColor(FLinearColor(0.35f, 0.60f, 0.88f));
+        Control->SetSliderHandleColor(FLinearColor(0.94f, 0.96f, 1.0f));
+        auto* ControlSlot = BasicRow->AddChildToHorizontalBox(Control);
+        ControlSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        ControlSlot->SetPadding(FMargin(12, 3, 12, 3));
+        BasicSliders.Add(Control);
+
+        auto* Numeric = WidgetTree->ConstructWidget<USpinBox>();
+        Numeric->SetMinValue(BasicMin[I]);
+        Numeric->SetMaxValue(BasicMax[I]);
+        Numeric->SetMinSliderValue(BasicMin[I]);
+        Numeric->SetMaxSliderValue(BasicMax[I]);
+        Numeric->SetDelta(I < 2 ? 0.1f : 1.0f);
+        Numeric->SetMinFractionalDigits(I < 2 ? 1 : 0);
+        Numeric->SetMaxFractionalDigits(I < 2 ? 1 : 0);
+        Numeric->SetMinDesiredWidth(100);
+        Numeric->SetForegroundColor(FSlateColor(FLinearColor::Black));
+        BasicRow->AddChildToHorizontalBox(Numeric)->SetSize(
+            FSlateChildSize(ESlateSizeRule::Automatic));
+        BasicNumbers.Add(Numeric);
+
+        auto* Unit = MakeLabel(I < 2 ? TEXT("倍") : TEXT("ms"), 13);
+        auto* UnitSlot = BasicRow->AddChildToHorizontalBox(Unit);
+        UnitSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+        UnitSlot->SetVerticalAlignment(VAlign_Center);
+        UnitSlot->SetPadding(FMargin(7, 0, 2, 0));
+    }
+    BasicSliders[0]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::MoveSensitivityChanged);
+    BasicSliders[1]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::TurnSensitivityChanged);
+    BasicSliders[2]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::BasicCommandDelayChanged);
+    BasicSliders[3]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::BasicVideoDelayChanged);
+    BasicNumbers[0]->OnValueCommitted.AddDynamic(this, &USimSettingsWidget::MoveSensitivityCommitted);
+    BasicNumbers[1]->OnValueCommitted.AddDynamic(this, &USimSettingsWidget::TurnSensitivityCommitted);
+    BasicNumbers[2]->OnValueCommitted.AddDynamic(this, &USimSettingsWidget::BasicCommandDelayCommitted);
+    BasicNumbers[3]->OnValueCommitted.AddDynamic(this, &USimSettingsWidget::BasicVideoDelayCommitted);
+    Contents->AddChildToVerticalBox(MakeLabel(
+        TEXT("感度1.0倍＝移動150cm/秒・旋回120度/秒。20倍まで調整できます。"), 12))
+        ->SetPadding(FMargin(5, 4));
+    Contents->AddChildToVerticalBox(MakeLabel(
+        TEXT("ラグはミリ秒で直接入力できます（0～1000ms）。"), 12))
+        ->SetPadding(FMargin(5, 3));
+
     Contents->AddChildToVerticalBox(MakeLabel(TEXT("■ 操作割り当て"), 17))
         ->SetPadding(FMargin(5, 10, 5, 3));
     const TCHAR* Titles[] = {
@@ -96,24 +155,20 @@ void USimSettingsWidget::NativeOnInitialized()
         TEXT("MouseLeft/Right/Up/Down＝マウス移動方向、MouseLMB/RMB＝クリック"), 12))
         ->SetPadding(FMargin(5, 5));
 
-    Contents->AddChildToVerticalBox(MakeLabel(TEXT("■ 操作感度・機体・映像"), 17))
+    Contents->AddChildToVerticalBox(MakeLabel(TEXT("■ 詳細設定（物理・映像）"), 17))
         ->SetPadding(FMargin(5, 12, 5, 3));
     const TCHAR* OptionTitles[] = {
-        TEXT("マウス左右の操作感度 (指令/px)"),
-        TEXT("マウス上下の操作感度 (指令/px)"),
-        TEXT("マウスボタンの操作強度 (0.05～1)"),
+        TEXT("マウスボタンの移動／旋回入力強度"),
         TEXT("機体の慣性揺れ (度)"),
         TEXT("射撃ごとのブレ (度)"),
         TEXT("タイヤの滑り (0=滑らない、1=大きく滑る)"),
-        TEXT("操作指令ラグ (ms)"),
-        TEXT("映像表示ラグ (ms)"),
         TEXT("カメラ表示FPS"),
         TEXT("旋回慣性（ms、離した後の旋回の残り具合）")
     };
-    const float Low[] = {0.001, 0.001, 0.05, 0, 0, 0, 0, 0, 1, 0};
-    const float High[] = {1, 1, 1, 8, 8, 1, 1000, 1000, 60, 1500};
-    const float Delta[] = {0.01, 0.01, 0.05, 0.1, 0.1, 0.05, 10, 10, 1, 25};
-    for (int32 I=0; I<10; ++I) {
+    const float Low[] = {0.05, 0, 0, 0, 1, 0};
+    const float High[] = {1, 8, 8, 1, 60, 1500};
+    const float Delta[] = {0.05, 0.1, 0.1, 0.05, 1, 25};
+    for (int32 I=0; I<6; ++I) {
         auto* Row = MakeRow(OptionTitles[I]);
         auto* Spin = WidgetTree->ConstructWidget<USpinBox>();
         Spin->SetMinValue(Low[I]);
@@ -126,16 +181,12 @@ void USimSettingsWidget::NativeOnInitialized()
         Row->AddChildToHorizontalBox(Spin)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         Numbers.Add(Spin);
     }
-    Numbers[0]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::MouseHorizontalChanged);
-    Numbers[1]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::MouseVerticalChanged);
-    Numbers[2]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::MouseButtonChanged);
-    Numbers[3]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::BodySwayChanged);
-    Numbers[4]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::RecoilChanged);
-    Numbers[5]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::SlipChanged);
-    Numbers[6]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::CommandDelayChanged);
-    Numbers[7]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::VideoDelayChanged);
-    Numbers[8]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::DisplayFpsChanged);
-    Numbers[9]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::TurnInertiaChanged);
+    Numbers[0]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::MouseButtonChanged);
+    Numbers[1]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::BodySwayChanged);
+    Numbers[2]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::RecoilChanged);
+    Numbers[3]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::SlipChanged);
+    Numbers[4]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::DisplayFpsChanged);
+    Numbers[5]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::TurnInertiaChanged);
 
     // 地表面から75°で固定する。パネル中心高さのみルール内の5パターンを選択。
     auto* PanelRow = MakeRow(TEXT("敵機ヒットパネルの高さ配置"));
@@ -187,7 +238,8 @@ void USimSettingsWidget::SetSettings(const RobotSim::InputBindings& Current,
 
 void USimSettingsWidget::Refresh()
 {
-    if (Combos.Num() != 7 || Numbers.Num() != 10 || !PanelProfileCombo) return;
+    if (Combos.Num() != 7 || Numbers.Num() != 6 || BasicNumbers.Num() != 4 ||
+        BasicSliders.Num() != 4 || !PanelProfileCombo) return;
     bUpdating = true;
     const RobotSim::InputSource Keys[] = {
         Working.forward,
@@ -200,28 +252,28 @@ void USimSettingsWidget::Refresh()
     };
     for (int32 I=0; I<7; ++I)
         Combos[I]->SetSelectedOption(UTF8_TO_TCHAR(RobotSim::sourceToken(Keys[I])));
+    const double BasicValues[] = {
+        WorkingTuning.moveSensitivity, WorkingTuning.turnSensitivity,
+        WorkingTuning.commandDelayMs, WorkingTuning.videoDelayMs
+    };
+    for (int32 I = 0; I < 4; ++I) {
+        BasicSliders[I]->SetValue(static_cast<float>(BasicValues[I]));
+        BasicNumbers[I]->SetValue(static_cast<float>(BasicValues[I]));
+    }
     const double Values[] = {
-        WorkingTuning.mouseHorizontal,
-        WorkingTuning.mouseVertical,
         WorkingTuning.mouseButtonStrength,
         WorkingTuning.bodySwayDegrees,
         WorkingTuning.shotRecoilDegrees,
         WorkingTuning.tireSlip,
-        WorkingTuning.commandDelayMs,
-        WorkingTuning.videoDelayMs,
         WorkingTuning.displayFps,
         WorkingTuning.turnInertiaMs
     };
-    for (int32 I=0; I<10; ++I)
+    for (int32 I=0; I<6; ++I)
         Numbers[I]->SetValue(static_cast<float>(Values[I]));
     PanelProfileCombo->SetSelectedOption(
         PanelProfileCombo->GetOptionAtIndex(WorkingTuning.panelPattern));
     bUpdating = false;
-    const bool bValid = Working.valid() && WorkingTuning.valid();
-    if (SaveButton) SaveButton->SetIsEnabled(bValid);
-    if (Message) Message->SetText(FText::FromString(bValid
-        ? TEXT("設定値は有効です。保存すると再起動後も復元されます。")
-        : TEXT("キーの重複または数値範囲を確認してください。")));
+    UpdateSaveState();
 }
 
 void USimSettingsWidget::OnSelection(int32 Index, const FString& Value)
@@ -245,21 +297,49 @@ void USimSettingsWidget::OnNumber(int32 Index, float Value)
 {
     if (bUpdating) return;
     switch (Index) {
-    case 0: WorkingTuning.mouseHorizontal = Value; break;
-    case 1: WorkingTuning.mouseVertical = Value; break;
-    case 2: WorkingTuning.mouseButtonStrength = Value; break;
-    case 3: WorkingTuning.bodySwayDegrees = Value; break;
-    case 4: WorkingTuning.shotRecoilDegrees = Value; break;
-    case 5: WorkingTuning.tireSlip = Value; break;
-    case 6: WorkingTuning.commandDelayMs = Value; break;
-    case 7: WorkingTuning.videoDelayMs = Value; break;
-    case 8: WorkingTuning.displayFps = Value; break;
-    case 9: WorkingTuning.turnInertiaMs = Value; break;
+    case 0: WorkingTuning.mouseButtonStrength = Value; break;
+    case 1: WorkingTuning.bodySwayDegrees = Value; break;
+    case 2: WorkingTuning.shotRecoilDegrees = Value; break;
+    case 3: WorkingTuning.tireSlip = Value; break;
+    case 4: WorkingTuning.displayFps = Value; break;
+    case 5: WorkingTuning.turnInertiaMs = Value; break;
     default: return;
     }
     // 編集中にスピン値を書き戻すと入力欄がリセットされるので状態表示のみ更新。
     const bool bValid = Working.valid() && WorkingTuning.valid();
     if (SaveButton) SaveButton->SetIsEnabled(bValid);
+}
+void USimSettingsWidget::UpdateSaveState()
+{
+    const bool bValid = Working.valid() && WorkingTuning.valid();
+    if (SaveButton) SaveButton->SetIsEnabled(bValid);
+    if (Message) Message->SetText(FText::FromString(bValid
+        ? TEXT("設定値は有効です。保存すると次回起動時にも復元されます。")
+        : TEXT("キーの重複、または数値範囲を確認してください。")));
+}
+void USimSettingsWidget::OnBasicNumber(int32 Index, float Value)
+{
+    if (bUpdating || Index < 0 || Index >= BasicNumbers.Num() ||
+        Index >= BasicSliders.Num() || !FMath::IsFinite(Value)) return;
+    // スライダーは感度0.1倍刻み、ラグは1ms刻み。数値直接入力も同じ規則。
+    const double Min = Index < 2 ? 0.1 : 0.0;
+    const double Max = Index < 2 ? 20.0 : 1000.0;
+    const double Clamped = FMath::Clamp(static_cast<double>(Value), Min, Max);
+    const double Normalized = Index < 2
+        ? static_cast<double>(FMath::RoundToInt(Clamped * 10.0)) / 10.0
+        : static_cast<double>(FMath::RoundToInt(Clamped));
+    switch (Index) {
+    case 0: WorkingTuning.moveSensitivity = Normalized; break;
+    case 1: WorkingTuning.turnSensitivity = Normalized; break;
+    case 2: WorkingTuning.commandDelayMs = Normalized; break;
+    case 3: WorkingTuning.videoDelayMs = Normalized; break;
+    default: return;
+    }
+    bUpdating = true;
+    BasicSliders[Index]->SetValue(static_cast<float>(Normalized));
+    BasicNumbers[Index]->SetValue(static_cast<float>(Normalized));
+    bUpdating = false;
+    UpdateSaveState();
 }
 void USimSettingsWidget::ForwardChanged(FString V, ESelectInfo::Type) { OnSelection(0, V); }
 void USimSettingsWidget::BackwardChanged(FString V, ESelectInfo::Type) { OnSelection(1, V); }
@@ -268,16 +348,20 @@ void USimSettingsWidget::StrafeRightChanged(FString V, ESelectInfo::Type) { OnSe
 void USimSettingsWidget::LeftChanged(FString V, ESelectInfo::Type) { OnSelection(4, V); }
 void USimSettingsWidget::RightChanged(FString V, ESelectInfo::Type) { OnSelection(5, V); }
 void USimSettingsWidget::FireChanged(FString V, ESelectInfo::Type) { OnSelection(6, V); }
-void USimSettingsWidget::MouseHorizontalChanged(float V) { OnNumber(0, V); }
-void USimSettingsWidget::MouseVerticalChanged(float V) { OnNumber(1, V); }
-void USimSettingsWidget::MouseButtonChanged(float V) { OnNumber(2, V); }
-void USimSettingsWidget::BodySwayChanged(float V) { OnNumber(3, V); }
-void USimSettingsWidget::RecoilChanged(float V) { OnNumber(4, V); }
-void USimSettingsWidget::SlipChanged(float V) { OnNumber(5, V); }
-void USimSettingsWidget::CommandDelayChanged(float V) { OnNumber(6, V); }
-void USimSettingsWidget::VideoDelayChanged(float V) { OnNumber(7, V); }
-void USimSettingsWidget::DisplayFpsChanged(float V) { OnNumber(8, V); }
-void USimSettingsWidget::TurnInertiaChanged(float V) { OnNumber(9, V); }
+void USimSettingsWidget::MouseButtonChanged(float V) { OnNumber(0, V); }
+void USimSettingsWidget::BodySwayChanged(float V) { OnNumber(1, V); }
+void USimSettingsWidget::RecoilChanged(float V) { OnNumber(2, V); }
+void USimSettingsWidget::SlipChanged(float V) { OnNumber(3, V); }
+void USimSettingsWidget::DisplayFpsChanged(float V) { OnNumber(4, V); }
+void USimSettingsWidget::TurnInertiaChanged(float V) { OnNumber(5, V); }
+void USimSettingsWidget::MoveSensitivityChanged(float V) { OnBasicNumber(0, V); }
+void USimSettingsWidget::TurnSensitivityChanged(float V) { OnBasicNumber(1, V); }
+void USimSettingsWidget::BasicCommandDelayChanged(float V) { OnBasicNumber(2, V); }
+void USimSettingsWidget::BasicVideoDelayChanged(float V) { OnBasicNumber(3, V); }
+void USimSettingsWidget::MoveSensitivityCommitted(float V, ETextCommit::Type) { OnBasicNumber(0, V); }
+void USimSettingsWidget::TurnSensitivityCommitted(float V, ETextCommit::Type) { OnBasicNumber(1, V); }
+void USimSettingsWidget::BasicCommandDelayCommitted(float V, ETextCommit::Type) { OnBasicNumber(2, V); }
+void USimSettingsWidget::BasicVideoDelayCommitted(float V, ETextCommit::Type) { OnBasicNumber(3, V); }
 void USimSettingsWidget::PanelProfileChanged(FString Value, ESelectInfo::Type)
 {
     if (bUpdating || !PanelProfileCombo) return;
