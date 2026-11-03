@@ -6,6 +6,7 @@ import unreal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from GenerateTextures import MAPS, SURFACES, generate_all
+from GenerateHitPanelMesh import generate_obj
 
 ASSET_SUFFIX = "PBRv2"
 DIRECTORY = "/Game/Generated"
@@ -156,6 +157,29 @@ for surface in SURFACES:
     maps = {kind: import_texture(surface, kind, files[surface][kind])
             for kind in MAPS}
     create_pbr_material(surface, maps)
+
+# 添付STEP由来の可視化メッシュ。インポートに失敗した場合はランタイムで簡易板へフォールバック。
+panel_asset = DIRECTORY + "/SM_GroundHitPanelModule"
+if not exists(panel_asset):
+    source = generate_obj(Path(unreal.Paths.project_saved_dir()) /
+                          "GeneratedMeshes" / "GroundHitPanelModule.obj")
+    task = unreal.AssetImportTask()
+    task.set_editor_property("filename", str(source))
+    task.set_editor_property("destination_path", DIRECTORY)
+    task.set_editor_property("destination_name", "SM_GroundHitPanelModule")
+    task.set_editor_property("automated", True)
+    task.set_editor_property("replace_existing", False)
+    task.set_editor_property("save", True)
+    try:
+        unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+        if exists(panel_asset):
+            unreal.EditorAssetLibrary.save_loaded_asset(
+                unreal.EditorAssetLibrary.load_asset(panel_asset))
+            unreal.log("ROBOT_SIM_PANEL_MESH_READY: STEP由来メッシュ")
+        else:
+            unreal.log_warning("ROBOT_SIM_PANEL_MESH_FALLBACK: OBJインポート非対応")
+    except Exception as exc:
+        unreal.log_warning("ROBOT_SIM_PANEL_MESH_FALLBACK: {}".format(exc))
 
 map_path = DIRECTORY + "/Minimal"
 if not exists(map_path):
