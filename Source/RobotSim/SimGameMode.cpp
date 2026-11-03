@@ -64,13 +64,19 @@ void ASimGameMode::BeginPlay()
     // 独立した環境・プラント・映像モジュールを初期化する。
     AActor* SpawnedRobot = nullptr;
     AActor* SpawnedTarget = nullptr;
-    FSimEnvironment::Build(GetWorld(), SpawnedRobot, SpawnedTarget);
+    AActor* SpawnedSpinningTarget = nullptr;
+    FSimEnvironment::Build(GetWorld(), SpawnedRobot, SpawnedTarget,
+                           SpawnedSpinningTarget);
     Robot = SpawnedRobot;
     Target = SpawnedTarget;
+    SpinningTarget = SpawnedSpinningTarget;
     Vehicle.Initialize(Robot);
+    AimRig.Initialize(Robot);
+    Weapon.Initialize(AimRig.MuzzleMount());
     HitPanels.Initialize(Target, Tuning.panelPattern);
+    SpinningHitPanels.Initialize(SpinningTarget, Tuning.panelPattern);
     Video = NewObject<URobotVideoPipeline>(this);
-    Video->Initialize(Robot, bExport);
+    Video->Initialize(Robot, AimRig.CameraMount(), bExport);
     Socket=FUdpSocketBuilder(TEXT("RobotSimCommand")).AsNonBlocking()
         .BoundToAddress(FIPv4Address(127,0,0,1)).BoundToPort(9876).WithReceiveBufferSize(65536);
     if(!Socket) UE_LOG(LogTemp,Error,TEXT("外部指令ポート9876を開けません。別のシミュレータが起動していないか確認してください。"));
@@ -137,6 +143,25 @@ void ASimGameMode::Step(double Dt)
         RawInput.mouseY = 0;
     }
     RobotSim::Command Applied = Controller.resolve(SimTime, SharedWeight);
+    SelectedAssistPanel = -1;
+    // ホールド中に限り、移動・射撃を変えず旋回・ピッチ指令のみ補助する。
+    // 候補抽出は現状シミュレータのパネルコライダを使用する実証実装。
+    if (Controller.assistActive() && Video && AimRig.MuzzleMount() && Robot) {
+        const auto Result = FSimAimAssist::Find(
+            GetWorld(), Video->CameraTransform(),
+            AimRig.MuzzleMount()->GetComponentLocation(),
+            Video->HorizontalFov(), Robot, Target, SpinningTarget);
+        if (Result.found) {
+            SelectedAssistPanel = Result.id;
+            const FRotator Disturbance =
+                Vehicle.BodySway() + Weapon.RecoilOffset();
+            Applied.turn = RobotSim::Aim::turnCorrection(
+                Robot->GetActorRotation().Yaw, Result.yawDeg - Disturbance.Yaw,
+                Vehicle.YawRate(), Tuning.maxTurnRateDegPerSec());
+            Applied.pitch = RobotSim::Aim::pitchCorrection(
+                AimRig.PitchDegrees(), Result.pitchDeg - Disturbance.Pitch);
+        }
+    }
     // 緊急停止だけは通常の指令遅延・モード裁定を通さない。
     if (FSimKeyboardInput::EmergencyStop(PC)) {
         Controller.emergencyStop();
@@ -146,10 +171,23 @@ void ASimGameMode::Step(double Dt)
     }
     Weapon.Advance(Dt);
     Vehicle.Advance(Applied, Dt, Tuning);
+    AimRig.AdvancePitch(Applied.pitch, Dt, Tuning.turnSensitivity);
+    if (Video)
+        Video->SetAimOffset(Vehicle.BodySway() + Weapon.RecoilOffset());
     if (!FSimKeyboardInput::EmergencyStop(PC))
         Weapon.TryFire(GetWorld(), Robot, SimTime, Controller.fireActive(),
                        Vehicle.BodySway(), Tuning.shotRecoilDegrees, WeaponRandom);
-    Target->SetActorLocation(FVector(400, 300 * std::sin(SimTime * 0.5), 0));
+    // 対象の移動は2種類。後者は移動しながら160°/s前後で常時自転する。
+    // 瞬間射撃判定とカメラ取得が参照する前に、両方の姿勢を更新する。
+    if (Target)
+        if (SpinningTarget) {
+        SpinningTarget->SetActorLocation(FVector(
+            160.0 + 205.0 * std::cos(0.58 * SimTime),
+            -325.0 + 160.0 * std::sin(0.47 * SimTime), 0.0));
+        SpinningTarget->SetActorRotation(FRotator(
+            0.0, FMath::Fmod(160.0*SimTime +
+                            15.0*std::sin(1.2*SimTime), 360.0), 0.0));
+    }
     if (Log && SimTime >= NextLog) {
         NextLog = SimTime + 0.02;
         const FVector P = Robot->GetActorLocation();
