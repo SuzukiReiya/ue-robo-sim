@@ -345,7 +345,7 @@ void ASimGameMode::LoadInputBindings()
     if (Obj->HasField(TEXT("panel_pattern"))) {
         if (!Obj->TryGetNumberField(TEXT("panel_pattern"), PatternValue) ||
             !FMath::IsFinite(PatternValue) ||
-            FMath::FloorToDouble(PatternValue) != PatternValue ||
+            FMath::FloorToInt(PatternValue) != PatternValue ||
             PatternValue < 0 || PatternValue >= RobotSim::PanelPatternCount) {
             UE_LOG(LogTemp, Warning, TEXT("パネル配置パターンが無効です。初期値を使用します。"));
             return;
