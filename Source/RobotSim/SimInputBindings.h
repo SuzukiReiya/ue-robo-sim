@@ -46,10 +46,14 @@ struct InputBindings {
     InputSource strafeLeft = InputSource::A;
     InputSource strafeRight = InputSource::D;
     InputSource fire = InputSource::MouseButtonLeft;
+    InputSource pitchUp = InputSource::MouseUp;
+    InputSource pitchDown = InputSource::MouseDown;
+    InputSource aimAssist = InputSource::Shift;
 
     bool valid() const {
-        const std::array<InputSource, 7> a = {
-            forward, backward, strafeLeft, strafeRight, turnLeft, turnRight, fire};
+        const std::array<InputSource, 10> a = {
+            forward, backward, strafeLeft, strafeRight, turnLeft, turnRight,
+            fire, pitchUp, pitchDown, aimAssist};
         for (std::size_t i=0; i<a.size(); ++i) {
             if (index(a[i]) >= SourceCount) return false;
             if (a[i] == InputSource::None) continue;
@@ -81,6 +85,7 @@ inline double sourceValue(InputSource source, const RawInput& raw, const Tuning&
 struct OperatorActions {
     Command movement;
     bool fire = false;
+    bool aimAssist = false;
 };
 inline OperatorActions mapInput(const InputBindings& bindings, const RawInput& raw,
                                 const Tuning& config = {}) {
@@ -92,6 +97,11 @@ inline OperatorActions mapInput(const InputBindings& bindings, const RawInput& r
     result.movement.strafe = std::clamp(
         sourceValue(bindings.strafeRight, raw, config) -
         sourceValue(bindings.strafeLeft, raw, config), -1.0, 1.0);
+    result.movement.pitch = std::clamp(
+        sourceValue(bindings.pitchUp, raw, config) -
+        sourceValue(bindings.pitchDown, raw, config), -1.0, 1.0);
+    // 射撃と補正ホールドは押下判定。マウスの相対移動にも割当て可能。
+    result.aimAssist = sourceValue(bindings.aimAssist, raw, config) > 0.2;
     // 射撃は強度ではなく押下の有無。マウスボタン速度には依存させない。
     result.fire = bindings.fire != InputSource::None &&
         (bindings.fire == InputSource::MouseButtonLeft ||
