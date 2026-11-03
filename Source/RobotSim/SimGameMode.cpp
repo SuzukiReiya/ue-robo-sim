@@ -234,50 +234,151 @@ FString ASimGameMode::BindingsPath() const
 void ASimGameMode::LoadInputBindings()
 {
     Bindings = {};
+    Tuning = {};
     FString Json;
     if (!FFileHelper::LoadFileToString(Json, *BindingsPath())) return;
     TSharedPtr<FJsonObject> Obj;
     const auto Reader = TJsonReaderFactory<>::Create(Json);
     if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) {
-        UE_LOG(LogTemp, Warning, TEXT("操作設定を読めません。初期値を使用します。"));
+        UE_LOG(LogTemp, Warning, TEXT("操作・物理設定のJSONが不正です。初期値を使用します。"));
         return;
     }
     RobotSim::InputBindings Loaded;
     const TCHAR* Fields[] = {
-        TEXT("forward"), TEXT("backward"), TEXT("turn_left"),
-        TEXT("turn_right"), TEXT("fire")
+        TEXT("forward"),
+        TEXT("backward"),
+        TEXT("turn_left"),
+        TEXT("turn_right"),
+        TEXT("fire"),
+        TEXT("strafe_left"),
+        TEXT("strafe_right")
     };
     RobotSim::InputSource* Entries[] = {
-        &Loaded.forward, &Loaded.backward, &Loaded.turnLeft,
-        &Loaded.turnRight, &Loaded.fire
+        &Loaded.forward,
+        &Loaded.backward,
+        &Loaded.turnLeft,
+        &Loaded.turnRight,
+        &Loaded.fire,
+        &Loaded.strafeLeft,
+        &Loaded.strafeRight
     };
-    for (int32 I=0; I<5; ++I) {
+    for (int32 I=0; I<7; ++I) {
         FString Token;
-        if (!Obj->TryGetStringField(Fields[I], Token) ||
-            !RobotSim::parseSource(TCHAR_TO_UTF8(*Token), *Entries[I])) {
-            UE_LOG(LogTemp, Warning, TEXT("操作設定の項目が無効です。初期値に戻します。"));
+        if (!Obj->TryGetStringField(Fields[I], Token)) {
+            if (I >= 5) {
+                // 旧版の5操作設定を読み込む。旧初期値だけ新初期値に移行する。
+                if (I == 5) {
+                    const bool OldDefault = Loaded.forward == RobotSim::InputSource::W &&
+                        Loaded.backward == RobotSim::InputSource::S &&
+                        Loaded.turnLeft == RobotSim::InputSource::A &&
+                        Loaded.turnRight == RobotSim::InputSource::D &&
+                        Loaded.fire == RobotSim::InputSource::MouseButtonLeft;
+                    if (OldDefault) {
+                        Loaded = {};
+                        break;
+                    }
+                    Loaded.strafeLeft = RobotSim::InputSource::None;
+                    Loaded.strafeRight = RobotSim::InputSource::None;
+                    break;
+                }
+            }
+            UE_LOG(LogTemp, Warning, TEXT("旧操作設定に不正な項目があるため初期値を使用します。"));
+            return;
+        }
+        if (!RobotSim::parseSource(TCHAR_TO_UTF8(*Token), *Entries[I])) {
+            UE_LOG(LogTemp, Warning, TEXT("操作割り当てが不正です。初期値を使用します。"));
             return;
         }
     }
-    if (Loaded.valid()) Bindings = Loaded;
-    else UE_LOG(LogTemp, Warning, TEXT("操作設定が重複しています。初期値に戻します。"));
+    if (!Loaded.valid()) {
+        UE_LOG(LogTemp, Warning, TEXT("割り当て重複のため初期値を使用します。"));
+        return;
+    }
+    Bindings = Loaded;
+    RobotSim::Tuning LoadedTuning;
+    const TCHAR* NumberFields[] = {
+        TEXT("mouse_horizontal"),
+        TEXT("mouse_vertical"),
+        TEXT("mouse_button_strength"),
+        TEXT("body_sway_deg"),
+        TEXT("shot_recoil_deg"),
+        TEXT("tire_slip"),
+        TEXT("command_delay_ms"),
+        TEXT("video_delay_ms"),
+        TEXT("display_fps")
+    };
+    double* Values[] = {
+        &LoadedTuning.mouseHorizontal,
+        &LoadedTuning.mouseVertical,
+        &LoadedTuning.mouseButtonStrength,
+        &LoadedTuning.bodySwayDegrees,
+        &LoadedTuning.shotRecoilDegrees,
+        &LoadedTuning.tireSlip,
+        &LoadedTuning.commandDelayMs,
+        &LoadedTuning.videoDelayMs,
+        &LoadedTuning.displayFps
+    };
+    for (int32 I=0; I<9; ++I) {
+        if (Obj->HasField(NumberFields[I]) &&
+            !Obj->TryGetNumberField(NumberFields[I], *Values[I])) {
+            UE_LOG(LogTemp, Warning, TEXT("設定数値が不正です。数値は初期値を使用します。"));
+            return;
+        }
+    }
+    if (LoadedTuning.valid()) Tuning = LoadedTuning;
+    else UE_LOG(LogTemp, Warning, TEXT("数値範囲が不正のため初期値を使用します。"));
 }
 
-bool ASimGameMode::ApplyInputBindings(const RobotSim::InputBindings& NewBindings)
+bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
+                                  const RobotSim::Tuning& NewTuning)
 {
-    if (!NewBindings.valid()) return false;
+    if (!NewBindings.valid() || !NewTuning.valid()) return false;
     TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-    Json->SetNumberField(TEXT("version"), 1);
+    Json->SetNumberField(TEXT("version"), 2);
     const TCHAR* Fields[] = {
-        TEXT("forward"), TEXT("backward"), TEXT("turn_left"),
-        TEXT("turn_right"), TEXT("fire")
+        TEXT("forward"),
+        TEXT("backward"),
+        TEXT("turn_left"),
+        TEXT("turn_right"),
+        TEXT("fire"),
+        TEXT("strafe_left"),
+        TEXT("strafe_right")
     };
     const RobotSim::InputSource Keys[] = {
-        NewBindings.forward, NewBindings.backward, NewBindings.turnLeft,
-        NewBindings.turnRight, NewBindings.fire
+        NewBindings.forward,
+        NewBindings.backward,
+        NewBindings.turnLeft,
+        NewBindings.turnRight,
+        NewBindings.fire,
+        NewBindings.strafeLeft,
+        NewBindings.strafeRight
     };
-    for (int32 I=0; I<5; ++I)
+    for (int32 I=0; I<7; ++I)
         Json->SetStringField(Fields[I], UTF8_TO_TCHAR(RobotSim::sourceToken(Keys[I])));
+    const TCHAR* NumberFields[] = {
+        TEXT("mouse_horizontal"),
+        TEXT("mouse_vertical"),
+        TEXT("mouse_button_strength"),
+        TEXT("body_sway_deg"),
+        TEXT("shot_recoil_deg"),
+        TEXT("tire_slip"),
+        TEXT("command_delay_ms"),
+        TEXT("video_delay_ms"),
+        TEXT("display_fps")
+    };
+    const double Values[] = {
+        NewTuning.mouseHorizontal,
+        NewTuning.mouseVertical,
+        NewTuning.mouseButtonStrength,
+        NewTuning.bodySwayDegrees,
+        NewTuning.shotRecoilDegrees,
+        NewTuning.tireSlip,
+        NewTuning.commandDelayMs,
+        NewTuning.videoDelayMs,
+        NewTuning.displayFps
+    };
+    for (int32 I=0; I<9; ++I)
+        Json->SetNumberField(NumberFields[I], Values[I]);
     FString Output;
     const auto Writer = TJsonWriterFactory<>::Create(&Output);
     if (!FJsonSerializer::Serialize(Json, Writer)) return false;
@@ -287,8 +388,22 @@ bool ASimGameMode::ApplyInputBindings(const RobotSim::InputBindings& NewBindings
             Output, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
         return false;
     Bindings = NewBindings;
+    Tuning = NewTuning;
+    CommandDelayMs = static_cast<float>(Tuning.commandDelayMs);
+    VideoDelayMs = static_cast<float>(Tuning.videoDelayMs);
     Controller.emergencyStop();
     Actions = {};
+    // 実験中にパラメータを変更した履歴を時刻付きで保存する。
+    const FString History = FString::Printf(
+        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f\n"),
+        SimTime, Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees,
+        Tuning.tireSlip, Tuning.mouseHorizontal, Tuning.mouseVertical,
+        Tuning.mouseButtonStrength, Tuning.commandDelayMs, Tuning.videoDelayMs,
+        Tuning.displayFps);
+    FFileHelper::SaveStringToFile(History,
+        *FPaths::Combine(RunDirectory, TEXT("parameter_changes.csv")),
+        FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(),
+        FILEWRITE_Append);
     return true;
 }
 
