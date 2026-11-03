@@ -77,7 +77,7 @@ void FSimHitPanels::Initialize(AActor* Target, int Pattern)
         Shape->RegisterComponent();
         SetTint(Shape, Target, FLinearColor(0.07f,0.12f,0.14f));
 
-        // STEP由来フレームの上へ識別面を描画。発光のみで暗い屋内でも視認可能。
+        // STEP由来フレームへ明るいエミッシブ面を配置。暗い競技会場でもパネルを視認できる。
         auto* Face = NewObject<UStaticMeshComponent>(
             Target, FName(*FString::Printf(TEXT("HitPanelFace_%d"), Side)));
         Face->SetupAttachment(Pivot);
@@ -87,7 +87,7 @@ void FSimHitPanels::Initialize(AActor* Target, int Pattern)
         Face->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Face->SetCastShadow(false);
         Face->RegisterComponent();
-        SetTint(Face, Target, FLinearColor(0.04f,0.83f,0.78f));
+        SetTint(Face, Target, FLinearColor(0.12f,2.2f,2.8f));
 
         // 射撃のVisibilityレイキャストのみ受け付ける判定面。
         // 物理車体やその他の衝突チャンネルには影響しない。
