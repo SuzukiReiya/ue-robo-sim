@@ -29,7 +29,7 @@ void FSimHitPanels::Initialize(AActor* Target, int Pattern)
     Owner = Target;
     Anchors.Empty();
     if (!Target || !Target->GetRootComponent()) return;
-    const auto* PanelMesh = LoadObject<UStaticMesh>(
+    auto* PanelMesh = LoadObject<UStaticMesh>(
         nullptr, TEXT("/Game/Generated/SM_GroundHitPanelModule.SM_GroundHitPanelModule"));
     if (!PanelMesh) {
         UE_LOG(LogTemp, Warning,
@@ -52,9 +52,9 @@ void FSimHitPanels::Initialize(AActor* Target, int Pattern)
         Pivot->SetRelativeRotation(FRotationMatrix::MakeFromXZ(Right, FaceNormal).Rotator());
         Anchors.Add(Pivot);
         auto* Shape = NewObject<UStaticMeshComponent>(
-            Target, *FString::Printf(TEXT("HitPanelGeometry_%d"), Side));
+            Target, FName(*FString::Printf(TEXT("HitPanelGeometry_%d"), Side)));
         Shape->SetupAttachment(Pivot);
-        Shape->SetStaticMesh(PanelMesh ? const_cast<UStaticMesh*>(PanelMesh) : CubeMesh());
+        Shape->SetStaticMesh(PanelMesh ? PanelMesh : CubeMesh());
         if (!PanelMesh)
             Shape->SetRelativeScale3D(FVector(0.09f,0.09f,0.019f));
         Shape->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -64,7 +64,7 @@ void FSimHitPanels::Initialize(AActor* Target, int Pattern)
 
         // STEP由来フレームの上へ識別面を描画。発光のみで暗い屋内でも視認可能。
         auto* Face = NewObject<UStaticMeshComponent>(
-            Target, *FString::Printf(TEXT("HitPanelFace_%d"), Side));
+            Target, FName(*FString::Printf(TEXT("HitPanelFace_%d"), Side)));
         Face->SetupAttachment(Pivot);
         Face->SetStaticMesh(CubeMesh());
         Face->SetRelativeLocation(FVector(0,0,1.3f));
@@ -77,7 +77,7 @@ void FSimHitPanels::Initialize(AActor* Target, int Pattern)
         // 射撃のVisibilityレイキャストのみ受け付ける判定面。
         // 物理車体やその他の衝突チャンネルには影響しない。
         auto* Sensor = NewObject<UBoxComponent>(
-            Target, *FString::Printf(TEXT("HitPanelCollider_%d"), Side));
+            Target, FName(*FString::Printf(TEXT("HitPanelCollider_%d"), Side)));
         Sensor->SetupAttachment(Pivot);
         Sensor->SetRelativeLocation(FVector(0,0,1.37f));
         Sensor->SetBoxExtent(FVector(4.45f,4.45f,0.08f));
