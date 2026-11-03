@@ -2,6 +2,8 @@
 #include "SimHUD.h"
 #include "SimEnvironment.h"
 #include "SimKeyboardInput.h"
+#include "SimSettingsWidget.h"
+#include "Blueprint/UserWidget.h"
 #include "SimVideoPipeline.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
@@ -52,6 +54,7 @@ void ASimGameMode::BeginPlay()
     LossRate=Sanitize(LossRate,0,0,1);
     SharedWeight=Sanitize(SharedWeight,0.5f,0,1);
     Random.Initialize(Seed);
+    LoadInputBindings();
     bExport=FParse::Param(FCommandLine::Get(),TEXT("ExportFrames"));
     // 独立した環境・プラント・映像モジュールを初期化する。
     AActor* SpawnedRobot = nullptr;
@@ -101,14 +104,17 @@ void ASimGameMode::Step(double Dt)
 {
     SimTime += Dt;
     const APlayerController* PC = GetWorld()->GetFirstPlayerController();
-    // 操作状態の取得は入力アダプタ、指令への変換と遅延・裁定はController。
+    // 生入力はTickで一度だけ取得。機体指令と射撃は個別の出口へ振り分ける。
     if (SimTime >= NextInput) {
         NextInput = SimTime + 0.02;
         if (Random.FRand() >= LossRate) {
             const double Delay = FMath::Max(
                 0.0f, CommandDelayMs + Random.FRandRange(-JitterMs, JitterMs)) / 1000.0;
-            Controller.submitButtons(FSimKeyboardInput::Read(PC), SimTime, Delay);
+            Actions = RobotSim::mapInput(Bindings, RawInput);
+            Controller.submitActions(Actions, SimTime, Delay);
         }
+        RawInput.mouseX = 0;
+        RawInput.mouseY = 0;
     }
     RobotSim::Command Applied = Controller.resolve(SimTime, SharedWeight);
     // 緊急停止だけは通常の指令遅延・モード裁定を通さない。
@@ -116,7 +122,10 @@ void ASimGameMode::Step(double Dt)
         Controller.emergencyStop();
         Applied = {};
         Vehicle.ResetMotion();
+        Actions.fire = false;
     }
+    if (!FSimKeyboardInput::EmergencyStop(PC))
+        Weapon.TryFire(GetWorld(), Robot, SimTime, Controller.fireActive());
     Vehicle.Advance(Applied, Dt);
     Target->SetActorLocation(FVector(400, 300 * std::sin(SimTime * 0.5), 25));
     if (Log && SimTime >= NextLog) {
@@ -138,12 +147,39 @@ void ASimGameMode::Step(double Dt)
 void ASimGameMode::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    if(auto* PC=GetWorld()->GetFirstPlayerController()) {
-        if(PC->WasInputKeyJustPressed(EKeys::One)) SwitchMode(RobotSim::Mode::Manual);
-        if(PC->WasInputKeyJustPressed(EKeys::Two)) SwitchMode(RobotSim::Mode::Shared);
-        if(PC->WasInputKeyJustPressed(EKeys::Three)) SwitchMode(RobotSim::Mode::Automatic);
-        if(PC->WasInputKeyJustPressed(EKeys::F1)) bDebug=!bDebug;
-        if(PC->WasInputKeyJustPressed(EKeys::Escape)) PC->ConsoleCommand(TEXT("quit"));
+    if (auto* PC = GetWorld()->GetFirstPlayerController()) {
+        if (!PC->IsInputKeyDown(EKeys::Escape)) bAwaitEscapeRelease = false;
+        if (!bAwaitEscapeRelease && PC->WasInputKeyJustPressed(EKeys::Escape)) {
+            SetSimulationPaused(!bPaused);
+            return;
+        }
+        // メニュー操作中には研究モードとデバッグ表示を変更させない。
+        if (!bPaused) {
+            if (PC->WasInputKeyJustPressed(EKeys::One)) SwitchMode(RobotSim::Mode::Manual);
+            if (PC->WasInputKeyJustPressed(EKeys::Two)) SwitchMode(RobotSim::Mode::Shared);
+            if (PC->WasInputKeyJustPressed(EKeys::Three)) SwitchMode(RobotSim::Mode::Automatic);
+            if (PC->WasInputKeyJustPressed(EKeys::F1)) bDebug = !bDebug;
+        }
+    }
+    // メニュー中はシミュレーション時間、機体、映像、対象、指令経路を停止する。
+    if (bPaused) return;
+    const RobotSim::RawInput FrameInput =
+        FSimKeyboardInput::Read(GetWorld()->GetFirstPlayerController());
+    RawInput.held = FrameInput.held;
+    RawInput.mouseX += FrameInput.mouseX;
+    RawInput.mouseY += FrameInput.mouseY;
+    // メニューをクリックして閉じた直後のクリック・マウス位置復帰を誤操作にしない。
+    if (bSkipMouseFrame) {
+        RawInput.mouseX = 0;
+        RawInput.mouseY = 0;
+        bSkipMouseFrame = false;
+    }
+    if (bAwaitMouseRelease) {
+        const bool bLeft = FrameInput.held[RobotSim::index(RobotSim::InputSource::MouseButtonLeft)];
+        const bool bRight = FrameInput.held[RobotSim::index(RobotSim::InputSource::MouseButtonRight)];
+        RawInput.held[RobotSim::index(RobotSim::InputSource::MouseButtonLeft)] = false;
+        RawInput.held[RobotSim::index(RobotSim::InputSource::MouseButtonRight)] = false;
+        if (!bLeft && !bRight) bAwaitMouseRelease = false;
     }
     ReceiveExternal();
     // 重いフレームでは追い付ける分だけ進め、破棄時間をログに明示。
@@ -162,16 +198,134 @@ FString ASimGameMode::Status() const
     if (!bDebug) return FString();
     const FVector Position = Robot ? Robot->GetActorLocation() : FVector::ZeroVector;
     return FString::Printf(
-        TEXT("1:手動 2:共有 3:自動 | モード=%d | W/S:前後 A/D:旋回 | Space:非常停止\n")
+        TEXT("1:手動 2:共有 3:自動 | モード=%d | Space:非常停止 Esc:操作設定\n")
         TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
-        TEXT("指令 %.0fms 映像 %.0fms | 画像経過 %.0fms | F1:表示切替"),
+        TEXT("射撃回数=%d | 指令 %.0fms 映像 %.0fms | 画像経過 %.0fms | Esc:設定"),
         static_cast<int32>(Controller.mode()),
         Controller.manual().throttle, Controller.applied().throttle,
         Vehicle.Speed(), Position.X, Position.Y,
         Vehicle.IsBlocked() ? TEXT("はい") : TEXT("いいえ"),
-        CommandDelayMs, VideoDelayMs,
+        Weapon.FiredCount(), CommandDelayMs, VideoDelayMs,
         Video ? Video->DisplayAge(SimTime) * 1000 : -1.0);
 }
+
+FString ASimGameMode::BindingsPath() const
+{
+    return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Config"),
+                           TEXT("InputBindings.json"));
+}
+
+void ASimGameMode::LoadInputBindings()
+{
+    Bindings = {};
+    FString Json;
+    if (!FFileHelper::LoadFileToString(Json, *BindingsPath())) return;
+    TSharedPtr<FJsonObject> Obj;
+    const auto Reader = TJsonReaderFactory<>::Create(Json);
+    if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) {
+        UE_LOG(LogTemp, Warning, TEXT("操作設定を読めません。初期値を使用します。"));
+        return;
+    }
+    RobotSim::InputBindings Loaded;
+    const TCHAR* Fields[] = {
+        TEXT("forward"), TEXT("backward"), TEXT("turn_left"),
+        TEXT("turn_right"), TEXT("fire")
+    };
+    RobotSim::InputSource* Entries[] = {
+        &Loaded.forward, &Loaded.backward, &Loaded.turnLeft,
+        &Loaded.turnRight, &Loaded.fire
+    };
+    for (int32 I=0; I<5; ++I) {
+        FString Token;
+        if (!Obj->TryGetStringField(Fields[I], Token) ||
+            !RobotSim::parseSource(TCHAR_TO_UTF8(*Token), *Entries[I])) {
+            UE_LOG(LogTemp, Warning, TEXT("操作設定の項目が無効です。初期値に戻します。"));
+            return;
+        }
+    }
+    if (Loaded.valid()) Bindings = Loaded;
+    else UE_LOG(LogTemp, Warning, TEXT("操作設定が重複しています。初期値に戻します。"));
+}
+
+bool ASimGameMode::ApplyInputBindings(const RobotSim::InputBindings& NewBindings)
+{
+    if (!NewBindings.valid()) return false;
+    TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+    Json->SetNumberField(TEXT("version"), 1);
+    const TCHAR* Fields[] = {
+        TEXT("forward"), TEXT("backward"), TEXT("turn_left"),
+        TEXT("turn_right"), TEXT("fire")
+    };
+    const RobotSim::InputSource Keys[] = {
+        NewBindings.forward, NewBindings.backward, NewBindings.turnLeft,
+        NewBindings.turnRight, NewBindings.fire
+    };
+    for (int32 I=0; I<5; ++I)
+        Json->SetStringField(Fields[I], UTF8_TO_TCHAR(RobotSim::sourceToken(Keys[I])));
+    FString Output;
+    const auto Writer = TJsonWriterFactory<>::Create(&Output);
+    if (!FJsonSerializer::Serialize(Json, Writer)) return false;
+    const FString Path = BindingsPath();
+    IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
+    if (!FFileHelper::SaveStringToFile(
+            Output, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+        return false;
+    Bindings = NewBindings;
+    Controller.emergencyStop();
+    Actions = {};
+    return true;
+}
+
+void ASimGameMode::FlushExternal()
+{
+    if (!Socket) return;
+    uint32 Pending = 0;
+    for (int32 I=0; I<4096 && Socket->HasPendingData(Pending); ++I) {
+        uint8 Buffer[2048];
+        int32 Read = 0;
+        if (!Socket->Recv(Buffer, sizeof(Buffer), Read)) break;
+    }
+}
+
+void ASimGameMode::SetSimulationPaused(bool bPause)
+{
+    if (bPaused == bPause) return;
+    APlayerController* PC = GetWorld()->GetFirstPlayerController();
+    if (!PC) return;
+    bPaused = bPause;
+    bAwaitEscapeRelease = true;
+    Controller.emergencyStop();
+    Actions = {};
+    RawInput = {};
+    Accumulator = 0;
+    NextInput = SimTime;
+    if (bPaused) {
+        if (!SettingsWidget)
+            SettingsWidget = CreateWidget<USimSettingsWidget>(
+                PC, USimSettingsWidget::StaticClass());
+        if (!SettingsWidget) {
+            bPaused = false;
+            UE_LOG(LogTemp, Error, TEXT("一時停止メニューを生成できません。"));
+            return;
+        }
+        SettingsWidget->AddToViewport(100);
+        SettingsWidget->SetBindings(Bindings);
+        PC->bShowMouseCursor = true;
+        FInputModeGameAndUI Mode;
+        Mode.SetWidgetToFocus(SettingsWidget->TakeWidget());
+        Mode.SetHideCursorDuringCapture(false);
+        PC->SetInputMode(Mode);
+        SettingsWidget->SetKeyboardFocus();
+    } else {
+        SettingsWidget->RemoveFromParent();
+        bAwaitMouseRelease = true;
+        bSkipMouseFrame = true;
+        PC->bShowMouseCursor = false;
+        PC->SetInputMode(FInputModeGameOnly());
+        FlushExternal();
+    }
+}
+
 void ASimGameMode::EndPlay(const EEndPlayReason::Type Reason)
 {
     if(Socket) {Socket->Close();ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(Socket);Socket=nullptr;}

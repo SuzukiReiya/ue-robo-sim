@@ -1,5 +1,6 @@
 #pragma once
 #include "SimCore.h"
+#include "SimInputBindings.h"
 
 namespace RobotSim {
 
@@ -19,19 +20,32 @@ enum class Mode { Manual = 0, Shared = 1, Automatic = 2 };
 class CommandRouter {
     Mode mode_ = Mode::Manual;
     DelayQueue<Command> manualQueue_;
+    DelayQueue<bool> fireQueue_;
     Command manual_{}, external_{}, applied_{};
+    bool manualFire_ = false;
     double lastManual_ = -100.0, lastExternal_ = -100.0, lastSequence_ = -1.0;
 public:
     void selectMode(Mode next) {
         mode_ = next;
         manualQueue_.clear();
+        fireQueue_.clear(); manualFire_ = false;
         manual_ = {}; external_ = {}; applied_ = {};
         lastManual_ = -100.0;
         lastExternal_ = -100.0;
         // 送信元のseqはモード切替後も単調増加を要求する。
     }
+    void submitCommand(Command command, double now, double commandDelay) {
+        manualQueue_.push(now, commandDelay, {
+            std::clamp(command.throttle, -1.0, 1.0),
+            std::clamp(command.turn, -1.0, 1.0)});
+    }
+    // 射撃も機体指令と同じ遅延経路に通し、裁定はここで行う。
+    void submitActions(OperatorActions actions, double now, double commandDelay) {
+        submitCommand(actions.movement, now, commandDelay);
+        fireQueue_.push(now, commandDelay, actions.fire);
+    }
     void submitButtons(OperatorButtons buttons, double now, double commandDelay) {
-        manualQueue_.push(now, commandDelay, toCommand(buttons));
+        submitCommand(toCommand(buttons), now, commandDelay);
     }
     bool submitExternal(double now, double sequence, Command command) {
         if (!std::isfinite(sequence) || !std::isfinite(command.throttle) ||
@@ -44,7 +58,8 @@ public:
     }
     Command resolve(double now, double sharedWeight) {
         if (manualQueue_.poll(now, manual_)) lastManual_ = now;
-        if (now - lastManual_ > 0.25) manual_ = {};
+        fireQueue_.poll(now, manualFire_);
+        if (now - lastManual_ > 0.25) { manual_ = {}; manualFire_ = false; }
         const bool fresh = now - lastExternal_ <= 0.25;
         const Command local = fresh ? external_ : Command{};
         switch (mode_) {
@@ -56,10 +71,12 @@ public:
     }
     void emergencyStop() {
         manualQueue_.clear();
+        fireQueue_.clear(); manualFire_ = false;
         manual_ = {}; external_ = {}; applied_ = {};
         lastManual_ = -100.0; lastExternal_ = -100.0;
     }
     Mode mode() const { return mode_; }
+    bool fireActive() const { return mode_ != Mode::Automatic && manualFire_; }
     Command manual() const { return manual_; }
     Command applied() const { return applied_; }
     Command freshExternal(double now) const {

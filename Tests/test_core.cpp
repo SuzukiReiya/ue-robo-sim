@@ -1,5 +1,6 @@
 #include "../Source/RobotSim/SimCore.h"
 #include "../Source/RobotSim/SimControl.h"
+#include "../Source/RobotSim/SimInputBindings.h"
 #include <cassert>
 #include <iostream>
 int main() {
@@ -53,5 +54,64 @@ int main() {
     router.selectMode(RobotSim::Mode::Automatic);
     router.selectMode(RobotSim::Mode::Manual);
     assert(router.resolve(3.6,0.5).throttle==0); // モード切替前のキューは消去
-    std::cout<<"遅延境界・順序逆転・初期化・共有制御・前後進・入力変換・モード裁定・機体応答: 成功\n";
+    // WASD + マウス移動・左右クリックの割り当てを機体や描画に依存せず検証。
+    RobotSim::InputBindings bindings;
+    assert(bindings.valid());
+    RobotSim::RawInput raw;
+    raw.held[RobotSim::index(RobotSim::InputSource::W)] = true;
+    raw.held[RobotSim::index(RobotSim::InputSource::D)] = true;
+    raw.held[RobotSim::index(RobotSim::InputSource::MouseButtonLeft)] = true;
+    auto action = RobotSim::mapInput(bindings, raw);
+    assert(action.movement.throttle == 1 && action.movement.turn == 1);
+    assert(action.fire);
+    bindings.forward = RobotSim::InputSource::MouseUp;
+    bindings.backward = RobotSim::InputSource::MouseDown;
+    bindings.turnLeft = RobotSim::InputSource::MouseLeft;
+    bindings.turnRight = RobotSim::InputSource::MouseRight;
+    bindings.fire = RobotSim::InputSource::MouseButtonRight;
+    assert(bindings.valid());
+    raw = {};
+    raw.mouseX = -6.0;
+    raw.mouseY = -12.0;
+    raw.held[RobotSim::index(RobotSim::InputSource::MouseButtonRight)] = true;
+    action = RobotSim::mapInput(bindings, raw);
+    assert(action.movement.throttle == 1);
+    assert(action.movement.turn == -0.5);
+    assert(action.fire);
+    raw.mouseX = 0;
+    raw.mouseY = 0;
+    assert(RobotSim::mapInput(bindings, raw).movement.throttle == 0);
+    bindings.fire = RobotSim::InputSource::MouseUp;
+    assert(!bindings.valid()); // 同じ割り当ては複数の操作に使用させない。
+    bindings.fire = RobotSim::InputSource::None;
+    assert(bindings.valid()); // 射撃のみ未割当を許可。
+    bindings.forward = RobotSim::InputSource::None;
+    assert(!bindings.valid());
+    for(std::size_t i=0; i<RobotSim::SourceCount; ++i) {
+        RobotSim::InputSource decoded = RobotSim::InputSource::None;
+        assert(RobotSim::parseSource(
+            RobotSim::sourceToken(static_cast<RobotSim::InputSource>(i)), decoded));
+        assert(decoded == static_cast<RobotSim::InputSource>(i));
+    }
+    RobotSim::InputSource invalid;
+    assert(!RobotSim::parseSource("Escape", invalid)); // 予約キー
+    RobotSim::CommandRouter fireRouter;
+    RobotSim::OperatorActions fireInput;
+    fireInput.fire = true;
+    fireRouter.submitActions(fireInput, 6.0, 0.2);
+    fireRouter.resolve(6.19, 0.5);
+    assert(!fireRouter.fireActive()); // 指令遅延が満了するまで発射しない。
+    fireRouter.resolve(6.20, 0.5);
+    assert(fireRouter.fireActive());
+    fireRouter.selectMode(RobotSim::Mode::Automatic);
+    assert(!fireRouter.fireActive()); // 手動の射撃は自動モードに持ち込まない。
+    fireRouter.selectMode(RobotSim::Mode::Manual);
+    fireRouter.submitActions(fireInput, 7.0, 0.0);
+    fireRouter.resolve(7.0, 0.5);
+    fireRouter.emergencyStop();
+    assert(!fireRouter.fireActive()); // 非常停止は発射も取り消す。
+    RobotSim::CommandRouter remappedRouter;
+    remappedRouter.submitCommand({-0.6,0.4}, 5.0, 0.1);
+    assert(remappedRouter.resolve(5.1,0.5).throttle < -0.59);
+    std::cout<<"遅延境界・順序逆転・初期化・共有制御・前後進・入力割当・マウス操作・モード裁定・機体応答: 成功\n";
 }

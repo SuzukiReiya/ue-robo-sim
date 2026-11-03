@@ -5,7 +5,7 @@ public class RobotSim : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new string[] {
-            "Core", "CoreUObject", "Engine", "InputCore", "Sockets", "Networking", "Json", "ImageWrapper", "RenderCore"
+            "Core", "CoreUObject", "Engine", "InputCore", "Sockets", "Networking", "Json", "ImageWrapper", "RenderCore", "UMG", "Slate", "SlateCore"
         });
     }
 }
