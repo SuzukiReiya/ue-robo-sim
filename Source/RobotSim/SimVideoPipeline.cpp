@@ -13,7 +13,8 @@ void URobotVideoPipeline::Initialize(AActor* CameraRobot, bool bEnableExport)
     Sensor = NewObject<USceneCaptureComponent2D>(CameraRobot);
     Sensor->SetupAttachment(CameraRobot->GetRootComponent());
     Sensor->SetAbsolute(false, false, true);
-    Sensor->SetRelativeLocation(FVector(45, 0, 45));
+    // 自機の非一様スケール(20x18x10cm)を考慮すると、地表面から約12cm。
+    Sensor->SetRelativeLocation(FVector(45, 0, 70));
     Sensor->bCaptureEveryFrame = false;
     Sensor->bCaptureOnMovement = false;
     Sensor->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
