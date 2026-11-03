@@ -63,13 +63,14 @@ struct RawInput {
     std::array<bool, SourceCount> held{};
     double mouseX = 0, mouseY = 0;
 };
-// マウスの移動量は1フレーム分のデルタ。向きと感度だけをここで扱い、制御モードには依存しない。
+// マウス移動量は1フレームの相対デルタ。固定の標準入力変換率と、
+// 車体側の感度倍率を分離する。制御モードやゲーム内速度はここでは決めない。
 inline double sourceValue(InputSource source, const RawInput& raw, const Tuning& config) {
     if (source == InputSource::None || index(source) >= SourceCount) return 0;
     switch (source) {
-    case InputSource::MouseLeft: return std::clamp(-raw.mouseX * config.mouseHorizontal, 0.0, 1.0);
+    case InputSource::MouseLeft: return std::clamp(-raw.mouseX * (1.0 / 12.0), 0.0, 1.0);
     case InputSource::MouseRight: return std::clamp(raw.mouseX * config.mouseHorizontal, 0.0, 1.0);
-    case InputSource::MouseUp: return std::clamp(-raw.mouseY * config.mouseVertical, 0.0, 1.0);
+    case InputSource::MouseUp: return std::clamp(-raw.mouseY * (1.0 / 12.0), 0.0, 1.0);
     case InputSource::MouseDown: return std::clamp(raw.mouseY * config.mouseVertical, 0.0, 1.0);
     case InputSource::MouseButtonLeft:
     case InputSource::MouseButtonRight:
