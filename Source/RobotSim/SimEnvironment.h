@@ -7,5 +7,6 @@ class UWorld;
 class FSimEnvironment
 {
 public:
-    static void Build(UWorld* World, AActor*& OutRobot, AActor*& OutTarget);
+    static void Build(UWorld* World, AActor*& OutRobot, AActor*& OutTarget,
+                      AActor*& OutSpinningTarget);
 };
