@@ -68,9 +68,9 @@ inline double sourceValue(InputSource source, const RawInput& raw, const Tuning&
     if (source == InputSource::None || index(source) >= SourceCount) return 0;
     switch (source) {
     case InputSource::MouseLeft: return std::clamp(-raw.mouseX * config.mouseHorizontal, 0.0, 1.0);
-    case InputSource::MouseRight: return std::clamp(raw.mouseX * Sensitivity, 0.0, 1.0);
+    case InputSource::MouseRight: return std::clamp(raw.mouseX * config.mouseHorizontal, 0.0, 1.0);
     case InputSource::MouseUp: return std::clamp(-raw.mouseY * config.mouseVertical, 0.0, 1.0);
-    case InputSource::MouseDown: return std::clamp(raw.mouseY * Sensitivity, 0.0, 1.0);
+    case InputSource::MouseDown: return std::clamp(raw.mouseY * config.mouseVertical, 0.0, 1.0);
     case InputSource::MouseButtonLeft:
     case InputSource::MouseButtonRight:
         return raw.held[index(source)] ? config.mouseButtonStrength : 0.0;
