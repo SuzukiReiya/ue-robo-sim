@@ -3,13 +3,17 @@
 class AActor;
 class UWorld;
 
-// 射撃は入力経路から独立。暫定的に前方へのレイキャストで発射を可視化する。
+// 射撃反動の姿勢ずれはカメラと射線へ共通適用する。射撃入力・GUIは参照しない。
 class FSimWeapon
 {
 public:
-    bool TryFire(UWorld* World, AActor* Robot, double SimTime, bool bTrigger);
+    void Advance(double Dt);
+    bool TryFire(UWorld* World, AActor* Robot, double SimTime, bool bTrigger,
+                 const FRotator& BodySway, double RecoilDegrees, FRandomStream& Random);
+    FRotator RecoilOffset() const { return Recoil; }
     int32 FiredCount() const { return Count; }
 private:
     double NextFireTime = 0;
     int32 Count = 0;
+    FRotator Recoil = FRotator::ZeroRotator;
 };
