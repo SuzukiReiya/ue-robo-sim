@@ -153,8 +153,8 @@ void ASimGameMode::Tick(float DeltaSeconds)
         if(PC->WasInputKeyJustPressed(EKeys::Two)) SwitchMode(RobotSim::Mode::Shared);
         if(PC->WasInputKeyJustPressed(EKeys::Three)) SwitchMode(RobotSim::Mode::Automatic);
         if(PC->WasInputKeyJustPressed(EKeys::F1)) bDebug=!bDebug;
-        if (!bPaused && !bAwaitEscapeRelease && PC->WasInputKeyJustPressed(EKeys::Escape)) {
-            SetSimulationPaused(true);
+        if (!bAwaitEscapeRelease && PC->WasInputKeyJustPressed(EKeys::Escape)) {
+            SetSimulationPaused(!bPaused);
             return;
         }
     }
