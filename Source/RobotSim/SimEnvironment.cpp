@@ -101,7 +101,13 @@ void FSimEnvironment::Build(UWorld* World, AActor*& OutRobot,
     auto AddAccentLamp = [World](FVector Position, FLinearColor Tint) {
         auto* Lamp = World->SpawnActor<APointLight>(Position, FRotator::ZeroRotator);
         if (!Lamp) return;
-        auto* Component = Lamp->GetPointLightComponent();
+        // APointLightにはGetPointLightComponent()はないため、
+        // ALightの取得APIからポイントライト専用成分へキャストする。
+        auto* Component = Cast<UPointLightComponent>(Lamp->GetLightComponent());
+        if (!Component) {
+            UE_LOG(LogTemp, Error, TEXT("フィールド補助照明の生成に失敗しました。"));
+            return;
+        }
         Component->SetMobility(EComponentMobility::Movable);
         Component->SetLightColor(Tint);
         Component->SetIntensity(1100.0f);
