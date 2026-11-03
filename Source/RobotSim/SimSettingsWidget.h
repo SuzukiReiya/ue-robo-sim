@@ -9,7 +9,7 @@
 class UButton;
 class UTextBlock;
 
-// 7種類の操作割り当てと物理・映像条件を一画面で設定する。
+// 10種類の操作割り当て（ピッチ・照準補助を含む）と物理・映像条件。
 UCLASS()
 class ROBOTSIM_API USimSettingsWidget : public UUserWidget
 {
@@ -44,6 +44,9 @@ private:
     UFUNCTION() void LeftChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void RightChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void FireChanged(FString Value, ESelectInfo::Type Selection);
+    UFUNCTION() void PitchUpChanged(FString Value, ESelectInfo::Type Selection);
+    UFUNCTION() void PitchDownChanged(FString Value, ESelectInfo::Type Selection);
+    UFUNCTION() void AssistChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void MouseButtonChanged(float Value);
     UFUNCTION() void BodySwayChanged(float Value);
     UFUNCTION() void RecoilChanged(float Value);

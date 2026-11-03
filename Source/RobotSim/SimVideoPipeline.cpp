@@ -1,5 +1,6 @@
 #include "SimVideoPipeline.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "Components/SceneComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "GameFramework/Actor.h"
 #include "ImageUtils.h"
@@ -7,14 +8,13 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
-void URobotVideoPipeline::Initialize(AActor* CameraRobot, bool bEnableExport)
+void URobotVideoPipeline::Initialize(AActor* CameraRobot, USceneComponent* Mount,
+                                     bool bEnableExport)
 {
     bExport = bEnableExport;
     Sensor = NewObject<USceneCaptureComponent2D>(CameraRobot);
-    Sensor->SetupAttachment(CameraRobot->GetRootComponent());
-    Sensor->SetAbsolute(false, false, true);
-    // 自機の非一様スケール(20x18x10cm)を考慮すると、地表面から約12cm。
-    Sensor->SetRelativeLocation(FVector(45, 0, 70));
+    Sensor->SetupAttachment(Mount ? Mount : CameraRobot->GetRootComponent());
+    Sensor->SetRelativeLocation(FVector::ZeroVector);
     Sensor->bCaptureEveryFrame = false;
     Sensor->bCaptureOnMovement = false;
     Sensor->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
@@ -116,4 +116,13 @@ void URobotVideoPipeline::ExportFrame(UTextureRenderTarget2D* Texture,
 void URobotVideoPipeline::SetAimOffset(const FRotator& Offset)
 {
     if (Sensor) Sensor->SetRelativeRotation(Offset);
+}
+
+FTransform URobotVideoPipeline::CameraTransform() const
+{
+    return Sensor ? Sensor->GetComponentTransform() : FTransform::Identity;
+}
+float URobotVideoPipeline::HorizontalFov() const
+{
+    return Sensor ? Sensor->FOVAngle : 90.0f;
 }

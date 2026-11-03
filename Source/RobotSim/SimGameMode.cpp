@@ -64,13 +64,19 @@ void ASimGameMode::BeginPlay()
     // 独立した環境・プラント・映像モジュールを初期化する。
     AActor* SpawnedRobot = nullptr;
     AActor* SpawnedTarget = nullptr;
-    FSimEnvironment::Build(GetWorld(), SpawnedRobot, SpawnedTarget);
+    AActor* SpawnedSpinningTarget = nullptr;
+    FSimEnvironment::Build(GetWorld(), SpawnedRobot, SpawnedTarget,
+                           SpawnedSpinningTarget);
     Robot = SpawnedRobot;
     Target = SpawnedTarget;
+    SpinningTarget = SpawnedSpinningTarget;
     Vehicle.Initialize(Robot);
+    AimRig.Initialize(Robot);
+    Weapon.Initialize(AimRig.MuzzleMount());
     HitPanels.Initialize(Target, Tuning.panelPattern);
+    SpinningHitPanels.Initialize(SpinningTarget, Tuning.panelPattern);
     Video = NewObject<URobotVideoPipeline>(this);
-    Video->Initialize(Robot, bExport);
+    Video->Initialize(Robot, AimRig.CameraMount(), bExport);
     Socket=FUdpSocketBuilder(TEXT("RobotSimCommand")).AsNonBlocking()
         .BoundToAddress(FIPv4Address(127,0,0,1)).BoundToPort(9876).WithReceiveBufferSize(65536);
     if(!Socket) UE_LOG(LogTemp,Error,TEXT("外部指令ポート9876を開けません。別のシミュレータが起動していないか確認してください。"));
@@ -78,7 +84,7 @@ void ASimGameMode::BeginPlay()
         FDateTime::UtcNow().ToString(TEXT("%Y%m%dT%H%M%S"))+TEXT("_")+FGuid::NewGuid().ToString());
     IFileManager::Get().MakeDirectory(*RunDirectory,true);
     Log.Reset(IFileManager::Get().CreateFileWriter(*FPaths::Combine(RunDirectory,TEXT("truth.csv"))));
-    const FString Header=TEXT("sim_s,x_cm,y_cm,yaw_deg,speed_cm_s,yaw_deg_s,manual_throttle,manual_turn,external_throttle,external_turn,applied_throttle,applied_turn,mode,display_age_s,manual_strafe,external_strafe,applied_strafe,body_pitch,body_roll,shot_count,panel_pattern,panel_hits\n");
+    const FString Header=TEXT("sim_s,x_cm,y_cm,yaw_deg,speed_cm_s,yaw_deg_s,manual_throttle,manual_turn,external_throttle,external_turn,applied_throttle,applied_turn,mode,display_age_s,manual_strafe,external_strafe,applied_strafe,body_pitch,body_roll,shot_count,panel_pattern,panel_hits,pitch_deg,assist_hold,assist_target,enemy2_x_cm,enemy2_y_cm,enemy2_yaw_deg\n");
     if(Log) { FTCHARToUTF8 Bytes(*Header); Log->Serialize((void*)Bytes.Get(),Bytes.Length()); }
     const FString Settings = FString::Printf(
         TEXT("{\"seed\":%d,\"command_delay_ms\":%g,\"video_delay_ms\":%g,")
@@ -136,7 +142,37 @@ void ASimGameMode::Step(double Dt)
         RawInput.mouseX = 0;
         RawInput.mouseY = 0;
     }
+    // 射撃と可視判定より先に移動・自転する2機を更新する。
+    if (Target)
+        Target->SetActorLocation(FVector(400, 300 * std::sin(SimTime * 0.5), 0));
+    if (SpinningTarget) {
+        SpinningTarget->SetActorLocation(FVector(
+            160.0 + 205.0 * std::cos(0.58 * SimTime),
+            -325.0 + 160.0 * std::sin(0.47 * SimTime), 0.0));
+        SpinningTarget->SetActorRotation(FRotator(
+            0.0, FMath::Fmod(160.0*SimTime +
+                            15.0*std::sin(1.2*SimTime), 360.0), 0.0));
+    }
     RobotSim::Command Applied = Controller.resolve(SimTime, SharedWeight);
+    SelectedAssistPanel = -1;
+    // ホールド中に限り、移動・射撃を変えず旋回・ピッチ指令のみ補助する。
+    // 候補抽出は現状シミュレータのパネルコライダを使用する実証実装。
+    if (Controller.assistActive() && Video && AimRig.MuzzleMount() && Robot) {
+        const auto Result = FSimAimAssist::Find(
+            GetWorld(), Video->CameraTransform(),
+            AimRig.MuzzleMount()->GetComponentLocation(),
+            Video->HorizontalFov(), Robot, Target, SpinningTarget);
+        if (Result.found) {
+            SelectedAssistPanel = Result.id;
+            const FRotator Disturbance =
+                Vehicle.BodySway() + Weapon.RecoilOffset();
+            Applied.turn = RobotSim::Aim::turnCorrection(
+                Robot->GetActorRotation().Yaw, Result.yawDeg - Disturbance.Yaw,
+                Vehicle.YawRate(), Tuning.maxTurnRateDegPerSec());
+            Applied.pitch = RobotSim::Aim::pitchCorrection(
+                AimRig.PitchDegrees(), Result.pitchDeg - Disturbance.Pitch);
+        }
+    }
     // 緊急停止だけは通常の指令遅延・モード裁定を通さない。
     if (FSimKeyboardInput::EmergencyStop(PC)) {
         Controller.emergencyStop();
@@ -146,17 +182,19 @@ void ASimGameMode::Step(double Dt)
     }
     Weapon.Advance(Dt);
     Vehicle.Advance(Applied, Dt, Tuning);
+    AimRig.AdvancePitch(Applied.pitch, Dt, Tuning.turnSensitivity);
+    if (Video)
+        Video->SetAimOffset(Vehicle.BodySway() + Weapon.RecoilOffset());
     if (!FSimKeyboardInput::EmergencyStop(PC))
         Weapon.TryFire(GetWorld(), Robot, SimTime, Controller.fireActive(),
                        Vehicle.BodySway(), Tuning.shotRecoilDegrees, WeaponRandom);
-    Target->SetActorLocation(FVector(400, 300 * std::sin(SimTime * 0.5), 0));
     if (Log && SimTime >= NextLog) {
         NextLog = SimTime + 0.02;
         const FVector P = Robot->GetActorLocation();
         const RobotSim::Command Manual = Controller.manual();
         const RobotSim::Command External = Controller.freshExternal(SimTime);
         const FString Line = FString::Printf(
-            TEXT("%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%.6f,%.3f,%.3f,%.3f,%.4f,%.4f,%d,%d,%d\n"),
+            TEXT("%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%.6f,%.3f,%.3f,%.3f,%.4f,%.4f,%d,%d,%d,%.3f,%d,%d,%.3f,%.3f,%.3f\n"),
             SimTime, P.X, P.Y, Robot->GetActorRotation().Yaw,
             Vehicle.Speed(), Vehicle.YawRate(),
             Manual.throttle, Manual.turn, External.throttle, External.turn,
@@ -164,7 +202,12 @@ void ASimGameMode::Step(double Dt)
             Video ? Video->DisplayAge(SimTime) : -1.0,
             Manual.strafe, External.strafe, Applied.strafe,
             Vehicle.BodySway().Pitch, Vehicle.BodySway().Roll, Weapon.FiredCount(),
-            Tuning.panelPattern, Weapon.PanelHitCount());
+            Tuning.panelPattern, Weapon.PanelHitCount(),
+            AimRig.PitchDegrees(), Controller.assistActive() ? 1 : 0,
+            SelectedAssistPanel,
+            SpinningTarget ? SpinningTarget->GetActorLocation().X : 0.0,
+            SpinningTarget ? SpinningTarget->GetActorLocation().Y : 0.0,
+            SpinningTarget ? SpinningTarget->GetActorRotation().Yaw : 0.0);
         FTCHARToUTF8 Bytes(*Line);
         Log->Serialize((void*)Bytes.Get(), Bytes.Length());
     }
@@ -230,7 +273,8 @@ FString ASimGameMode::Status() const
         TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
         TEXT("横速度=%+.1fcm/s 射撃=%d | 指令 %.0fms 映像 %.0fms | FPS %.0f | 画像経過 %.0fms\n")
         TEXT("旋回慣性=%.0fms | パネル高さパターン=%d | パネル命中=%d\n")
-        TEXT("移動感度=%.1f倍 | 旋回感度=%.1f倍"),
+        TEXT("移動感度=%.1f倍 | 旋回感度=%.1f倍\n")
+        TEXT("砲身ピッチ=%+.1f° | Shift補正=%s | 対象パネル=%d"),
         static_cast<int32>(Controller.mode()),
         Controller.manual().throttle, Controller.applied().throttle,
         Vehicle.Speed(), Position.X, Position.Y,
@@ -239,7 +283,9 @@ FString ASimGameMode::Status() const
         Tuning.displayFps,
         Video ? Video->DisplayAge(SimTime) * 1000 : -1.0,
         Tuning.turnInertiaMs, Tuning.panelPattern, Weapon.PanelHitCount(),
-        Tuning.moveSensitivity, Tuning.turnSensitivity);
+        Tuning.moveSensitivity, Tuning.turnSensitivity,
+        AimRig.PitchDegrees(), Controller.assistActive() ? TEXT("有効") : TEXT("無効"),
+        SelectedAssistPanel);
 }
 
 FString ASimGameMode::BindingsPath() const
@@ -305,6 +351,30 @@ void ASimGameMode::LoadInputBindings()
         if (!RobotSim::parseSource(TCHAR_TO_UTF8(*Token), *Entries[I])) {
             UE_LOG(LogTemp, Warning, TEXT("操作割り当てが不正です。初期値を使用します。"));
             return;
+        }
+    }
+    // v4までは7操作。追加3操作は存在すれば復元、なければ初期値。
+    // 旧カスタム割当が新しい既定キーと衝突する場合は追加側を未割当にする。
+    const TCHAR* ExtraFields[] = {
+        TEXT("pitch_up"), TEXT("pitch_down"), TEXT("aim_assist")
+    };
+    RobotSim::InputSource* ExtraValues[] = {
+        &Loaded.pitchUp, &Loaded.pitchDown, &Loaded.aimAssist
+    };
+    const RobotSim::InputSource Existing[] = {
+        Loaded.forward, Loaded.backward, Loaded.strafeLeft, Loaded.strafeRight,
+        Loaded.turnLeft, Loaded.turnRight, Loaded.fire
+    };
+    for (int32 I=0; I<3; ++I) {
+        FString Token;
+        if (Obj->TryGetStringField(ExtraFields[I], Token)) {
+            if (!RobotSim::parseSource(TCHAR_TO_UTF8(*Token), *ExtraValues[I])) {
+                UE_LOG(LogTemp, Warning, TEXT("補正・ピッチ操作設定が不正です。初期値を使用します。"));
+                return;
+            }
+        } else {
+            for (auto Key : Existing)
+                if (Key == *ExtraValues[I]) *ExtraValues[I] = RobotSim::InputSource::None;
         }
     }
     if (!Loaded.valid()) {
@@ -378,7 +448,7 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
 {
     if (!NewBindings.valid() || !NewTuning.valid()) return false;
     TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-    Json->SetNumberField(TEXT("version"), 4);
+    Json->SetNumberField(TEXT("version"), 5);
     const TCHAR* Fields[] = {
         TEXT("forward"),
         TEXT("backward"),
@@ -399,6 +469,12 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
     };
     for (int32 I=0; I<7; ++I)
         Json->SetStringField(Fields[I], UTF8_TO_TCHAR(RobotSim::sourceToken(Keys[I])));
+    Json->SetStringField(TEXT("pitch_up"),
+        UTF8_TO_TCHAR(RobotSim::sourceToken(NewBindings.pitchUp)));
+    Json->SetStringField(TEXT("pitch_down"),
+        UTF8_TO_TCHAR(RobotSim::sourceToken(NewBindings.pitchDown)));
+    Json->SetStringField(TEXT("aim_assist"),
+        UTF8_TO_TCHAR(RobotSim::sourceToken(NewBindings.aimAssist)));
     const TCHAR* NumberFields[] = {
         TEXT("move_sensitivity"),
         TEXT("turn_sensitivity"),

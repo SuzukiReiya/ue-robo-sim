@@ -5,6 +5,7 @@
 
 class AActor;
 class USceneCaptureComponent2D;
+class USceneComponent;
 class UTextureRenderTarget2D;
 
 // カメラ取得→映像遅延→操縦者表示を一括管理する独立モジュール。
@@ -14,10 +15,12 @@ class ROBOTSIM_API URobotVideoPipeline : public UObject
 {
     GENERATED_BODY()
 public:
-    void Initialize(AActor* CameraRobot, bool bEnableExport);
+    void Initialize(AActor* CameraRobot, USceneComponent* Mount, bool bEnableExport);
     void Advance(double SimTime, float VideoDelayMs, float JitterMs,
                  float LossRate, FRandomStream& Random, double DisplayFps);
     void SetAimOffset(const FRotator& Offset);
+    FTransform CameraTransform() const;
+    float HorizontalFov() const;
     UTextureRenderTarget2D* DisplayTexture() const;
     double DisplayAge(double SimTime) const;
 private:
