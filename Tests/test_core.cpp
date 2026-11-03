@@ -1,5 +1,6 @@
 #include "../Source/RobotSim/SimCore.h"
 #include "../Source/RobotSim/SimControl.h"
+#include "../Source/RobotSim/SimAimMath.h"
 #include "../Source/RobotSim/SimInputBindings.h"
 #include <cassert>
 #include <iostream>
@@ -69,6 +70,10 @@ int main() {
     bindings.turnLeft = RobotSim::InputSource::MouseLeft;
     bindings.turnRight = RobotSim::InputSource::MouseRight;
     bindings.fire = RobotSim::InputSource::MouseButtonRight;
+    // カスタム割当テストでは旧移動キーをピッチへ二重割当しない。
+    bindings.pitchUp = RobotSim::InputSource::None;
+    bindings.pitchDown = RobotSim::InputSource::None;
+    bindings.aimAssist = RobotSim::InputSource::None;
     assert(bindings.valid());
     raw = {};
     raw.mouseX = -6.0;
@@ -161,6 +166,54 @@ int main() {
     assert(std::abs(RobotSim::mapInput(clickable,horizontal,tweak).movement.strafe-0.4)<1e-8);
     tweak.displayFps=0;
     assert(!tweak.valid());
+    // マウス上下とShiftホールドの入力変換・重複割当検証。
+    RobotSim::InputBindings pitchBindings;
+    assert(pitchBindings.valid());
+    RobotSim::RawInput pitchRaw;
+    pitchRaw.mouseY = -6.0;
+    pitchRaw.held[RobotSim::index(RobotSim::InputSource::Shift)] = true;
+    auto mappedPitch = RobotSim::mapInput(pitchBindings, pitchRaw);
+    assert(std::abs(mappedPitch.movement.pitch-0.5)<1e-9);
+    assert(mappedPitch.aimAssist && !mappedPitch.fire);
+    pitchRaw.mouseY = 6.0;
+    assert(std::abs(RobotSim::mapInput(pitchBindings, pitchRaw).movement.pitch+0.5)<1e-9);
+    pitchBindings.aimAssist = RobotSim::InputSource::W;
+    assert(!pitchBindings.valid());
+    RobotSim::CommandRouter assistRouter;
+    RobotSim::OperatorActions assisted;
+    assisted.aimAssist=true;
+    assisted.movement.pitch=0.6;
+    assistRouter.submitActions(assisted, 0.0, 0.15);
+    assistRouter.resolve(0.14, 0.5);
+    assert(!assistRouter.assistActive());
+    assistRouter.resolve(0.15, 0.5);
+    assert(assistRouter.assistActive());
+    assert(std::abs(assistRouter.applied().pitch-0.6)<1e-9);
+    assistRouter.emergencyStop();
+    assert(!assistRouter.assistActive());
+    // カメラ上部・砲口下部による視差。画面中央であっても射線は上向き。
+    namespace Aim = RobotSim::Aim;
+    const std::vector<Aim::Candidate> panels = {
+        {0,{400,0,10},true}, {1,{400,200,10},true}};
+    auto selected = Aim::select({0,0,18},0,0,{17,0,8},panels);
+    assert(selected.found && selected.id==0);
+    assert(selected.pitchDeg>0 && selected.pitchDeg<2);
+    assert(std::abs(selected.yawDeg)<1e-10);
+    auto hidden = Aim::select({0,0,18},0,0,{17,0,8},
+                              {{0,{400,0,10},false}});
+    assert(!hidden.found);
+    auto outside = Aim::select({0,0,18},0,0,{17,0,8},
+                               {{0,{620,0,10},true}});
+    assert(!outside.found);
+    auto behind = Aim::select({0,0,18},0,0,{17,0,8},
+                              {{0,{-200,0,10},true}});
+    assert(!behind.found);
+    auto farOffAxis = Aim::select({0,0,18},0,0,{17,0,8},
+                                   {{0,{300,250,10},true}});
+    assert(!farOffAxis.found);
+    assert(Aim::turnCorrection(0,10,0,120)>0);
+    assert(Aim::pitchCorrection(0,5)>0);
+    assert(Aim::turnCorrection(0,0,0,120)==0);
     RobotSim::CommandRouter remappedRouter;
     remappedRouter.submitCommand({-0.6,0.4}, 5.0, 0.1);
     assert(remappedRouter.resolve(5.1,0.5).throttle < -0.59);
@@ -200,5 +253,5 @@ int main() {
     panelTuning.turnInertiaMs = 450;
     panelTuning.panelPattern = 5;
     assert(!panelTuning.valid());
-    std::cout<<"遅延境界・順序逆転・共有制御・前後進・感度上限・旋回慣性・被弾パネル高さ・入力割当・機体応答: 成功\n";
+    std::cout<<"遅延境界・順序逆転・共有制御・前後進・感度上限・旋回慣性・被弾パネル高さ・ピッチ操作・照準補正・機体応答: 成功\n";
 }
