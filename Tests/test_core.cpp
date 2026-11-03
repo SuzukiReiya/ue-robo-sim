@@ -62,7 +62,7 @@ int main() {
     raw.held[RobotSim::index(RobotSim::InputSource::D)] = true;
     raw.held[RobotSim::index(RobotSim::InputSource::MouseButtonLeft)] = true;
     auto action = RobotSim::mapInput(bindings, raw);
-    assert(action.movement.throttle == 1 && action.movement.turn == 1);
+    assert(action.movement.throttle == 1 && action.movement.strafe == 1 && action.movement.turn == 0);
     assert(action.fire);
     bindings.forward = RobotSim::InputSource::MouseUp;
     bindings.backward = RobotSim::InputSource::MouseDown;
@@ -84,9 +84,9 @@ int main() {
     bindings.fire = RobotSim::InputSource::MouseUp;
     assert(!bindings.valid()); // 同じ割り当ては複数の操作に使用させない。
     bindings.fire = RobotSim::InputSource::None;
-    assert(bindings.valid()); // 射撃のみ未割当を許可。
+    assert(bindings.valid()); // 射撃の未割当を許可。
     bindings.forward = RobotSim::InputSource::None;
-    assert(!bindings.valid());
+    assert(bindings.valid()); // すべての操作で未割当を許可。
     for(std::size_t i=0; i<RobotSim::SourceCount; ++i) {
         RobotSim::InputSource decoded = RobotSim::InputSource::None;
         assert(RobotSim::parseSource(
@@ -110,6 +110,28 @@ int main() {
     fireRouter.resolve(7.0, 0.5);
     fireRouter.emergencyStop();
     assert(!fireRouter.fireActive()); // 非常停止は発射も取り消す。
+    // 横移動軸は前後進および旋回から独立し、共有制御でも補間される。
+    auto mixed = RobotSim::blend({1,0,1}, {0,1,-1}, 0.25);
+    assert(mixed.throttle == 0.75 && mixed.turn == 0.25 && mixed.strafe == 0.5);
+    RobotSim::Drive sideways;
+    for (int i=0;i<120;++i) sideways.step({0,0,1},1.0/120,150,120,0.15);
+    assert(sideways.lateralSpeed>149 && sideways.speed==0 && sideways.yawRate==0);
+    RobotSim::Tuning tweak;
+    assert(tweak.valid());
+    tweak.mouseHorizontal=0.2;
+    RobotSim::RawInput horizontal;
+    horizontal.mouseX=2;
+    RobotSim::InputBindings defaults;
+    assert(RobotSim::mapInput(defaults,horizontal,tweak).movement.turn>0.39);
+    tweak.mouseButtonStrength=0.4;
+    RobotSim::InputBindings clickable;
+    clickable.strafeRight=RobotSim::InputSource::MouseButtonRight;
+    clickable.turnRight=RobotSim::InputSource::None;
+    assert(clickable.valid());
+    horizontal.held[RobotSim::index(RobotSim::InputSource::MouseButtonRight)]=true;
+    assert(std::abs(RobotSim::mapInput(clickable,horizontal,tweak).movement.strafe-0.4)<1e-8);
+    tweak.displayFps=0;
+    assert(!tweak.valid());
     RobotSim::CommandRouter remappedRouter;
     remappedRouter.submitCommand({-0.6,0.4}, 5.0, 0.1);
     assert(remappedRouter.resolve(5.1,0.5).throttle < -0.59);
