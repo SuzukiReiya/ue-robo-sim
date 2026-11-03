@@ -83,7 +83,8 @@ public:
     }
     void emergencyStop() {
         manualQueue_.clear();
-        fireQueue_.clear(); manualFire_ = false;
+        fireQueue_.clear(); assistQueue_.clear();
+        manualFire_ = false; manualAssist_ = false;
         manual_ = {}; external_ = {}; applied_ = {};
         lastManual_ = -100.0; lastExternal_ = -100.0;
     }
