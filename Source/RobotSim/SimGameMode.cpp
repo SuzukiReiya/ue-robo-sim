@@ -85,11 +85,13 @@ void ASimGameMode::BeginPlay()
         TEXT("\"jitter_ms\":%g,\"loss_rate\":%g,\"shared_weight\":%g,")
         TEXT("\"export_frames\":%s,\"physics_hz\":120,\"camera_hz\":%g,")
         TEXT("\"body_sway_deg\":%g,\"shot_recoil_deg\":%g,\"tire_slip\":%g,")
-        TEXT("\"turn_inertia_ms\":%g,\"panel_pattern\":%d}"),
+        TEXT("\"turn_inertia_ms\":%g,\"panel_pattern\":%d,")
+        TEXT("\"move_sensitivity\":%g,\"turn_sensitivity\":%g}"),
         Seed, CommandDelayMs, VideoDelayMs, JitterMs, LossRate, SharedWeight,
         bExport ? TEXT("true") : TEXT("false"), Tuning.displayFps,
         Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees, Tuning.tireSlip,
-        Tuning.turnInertiaMs, Tuning.panelPattern);
+        Tuning.turnInertiaMs, Tuning.panelPattern,
+        Tuning.moveSensitivity, Tuning.turnSensitivity);
     FFileHelper::SaveStringToFile(Settings,*FPaths::Combine(RunDirectory,TEXT("settings.json")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
     if(auto* PC=GetWorld()->GetFirstPlayerController()) { PC->bShowMouseCursor=false; PC->SetInputMode(FInputModeGameOnly()); }
     UE_LOG(LogTemp,Display,TEXT("ROBOT_SIM_READY: %s"),*RunDirectory);
@@ -227,7 +229,8 @@ FString ASimGameMode::Status() const
         TEXT("1:手動 2:共有 3:自動 | モード=%d | Space:非常停止 Esc:操作設定\n")
         TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
         TEXT("横速度=%+.1fcm/s 射撃=%d | 指令 %.0fms 映像 %.0fms | FPS %.0f | 画像経過 %.0fms\n")
-        TEXT("旋回慣性=%.0fms | パネル高さパターン=%d | パネル命中=%d"),
+        TEXT("旋回慣性=%.0fms | パネル高さパターン=%d | パネル命中=%d\\n")
+        TEXT("移動感度=%.1f倍 | 旋回感度=%.1f倍"),
         static_cast<int32>(Controller.mode()),
         Controller.manual().throttle, Controller.applied().throttle,
         Vehicle.Speed(), Position.X, Position.Y,
@@ -235,7 +238,8 @@ FString ASimGameMode::Status() const
         Vehicle.LateralSpeed(), Weapon.FiredCount(), CommandDelayMs, VideoDelayMs,
         Tuning.displayFps,
         Video ? Video->DisplayAge(SimTime) * 1000 : -1.0,
-        Tuning.turnInertiaMs, Tuning.panelPattern, Weapon.PanelHitCount());
+        Tuning.turnInertiaMs, Tuning.panelPattern, Weapon.PanelHitCount(),
+        Tuning.moveSensitivity, Tuning.turnSensitivity);
 }
 
 FString ASimGameMode::BindingsPath() const
@@ -310,8 +314,8 @@ void ASimGameMode::LoadInputBindings()
     Bindings = Loaded;
     RobotSim::Tuning LoadedTuning;
     const TCHAR* NumberFields[] = {
-        TEXT("mouse_horizontal"),
-        TEXT("mouse_vertical"),
+        TEXT("move_sensitivity"),
+        TEXT("turn_sensitivity"),
         TEXT("mouse_button_strength"),
         TEXT("body_sway_deg"),
         TEXT("shot_recoil_deg"),
@@ -322,8 +326,8 @@ void ASimGameMode::LoadInputBindings()
         TEXT("turn_inertia_ms")
     };
     double* Values[] = {
-        &LoadedTuning.mouseHorizontal,
-        &LoadedTuning.mouseVertical,
+        &LoadedTuning.moveSensitivity,
+        &LoadedTuning.turnSensitivity,
         &LoadedTuning.mouseButtonStrength,
         &LoadedTuning.bodySwayDegrees,
         &LoadedTuning.shotRecoilDegrees,
@@ -352,6 +356,19 @@ void ASimGameMode::LoadInputBindings()
         }
         LoadedTuning.panelPattern = static_cast<int>(PatternValue);
     }
+    // v3までの「マウス1px当たり指令」を、v4の直感的な倍率へ移行する。
+    // 新しいフィールドがある場合はそちらを優先し、旧フィールドを無視する。
+    double Legacy = 0.0;
+    if (!Obj->HasField(TEXT("move_sensitivity")) &&
+        Obj->TryGetNumberField(TEXT("mouse_vertical"), Legacy) &&
+        FMath::IsFinite(Legacy) && Legacy > 0) {
+        LoadedTuning.moveSensitivity = FMath::Clamp(Legacy * 12.0, 0.1, 20.0);
+    }
+    if (!Obj->HasField(TEXT("turn_sensitivity")) &&
+        Obj->TryGetNumberField(TEXT("mouse_horizontal"), Legacy) &&
+        FMath::IsFinite(Legacy) && Legacy > 0) {
+        LoadedTuning.turnSensitivity = FMath::Clamp(Legacy * 12.0, 0.1, 20.0);
+    }
     if (LoadedTuning.valid()) Tuning = LoadedTuning;
     else UE_LOG(LogTemp, Warning, TEXT("数値範囲が不正のため初期値を使用します。"));
 }
@@ -361,7 +378,7 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
 {
     if (!NewBindings.valid() || !NewTuning.valid()) return false;
     TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-    Json->SetNumberField(TEXT("version"), 3);
+    Json->SetNumberField(TEXT("version"), 4);
     const TCHAR* Fields[] = {
         TEXT("forward"),
         TEXT("backward"),
@@ -383,8 +400,8 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
     for (int32 I=0; I<7; ++I)
         Json->SetStringField(Fields[I], UTF8_TO_TCHAR(RobotSim::sourceToken(Keys[I])));
     const TCHAR* NumberFields[] = {
-        TEXT("mouse_horizontal"),
-        TEXT("mouse_vertical"),
+        TEXT("move_sensitivity"),
+        TEXT("turn_sensitivity"),
         TEXT("mouse_button_strength"),
         TEXT("body_sway_deg"),
         TEXT("shot_recoil_deg"),
@@ -395,8 +412,8 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
         TEXT("turn_inertia_ms")
     };
     const double Values[] = {
-        NewTuning.mouseHorizontal,
-        NewTuning.mouseVertical,
+        NewTuning.moveSensitivity,
+        NewTuning.turnSensitivity,
         NewTuning.mouseButtonStrength,
         NewTuning.bodySwayDegrees,
         NewTuning.shotRecoilDegrees,
@@ -426,11 +443,12 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
     Actions = {};
     // 実験中にパラメータを変更した履歴を時刻付きで保存する。
     const FString History = FString::Printf(
-        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%d\n"),
+        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%d,%.1f,%.1f\n"),
         SimTime, Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees,
         Tuning.tireSlip, Tuning.mouseHorizontal, Tuning.mouseVertical,
         Tuning.mouseButtonStrength, Tuning.commandDelayMs, Tuning.videoDelayMs,
-        Tuning.displayFps, Tuning.turnInertiaMs, Tuning.panelPattern);
+        Tuning.displayFps, Tuning.turnInertiaMs, Tuning.panelPattern,
+        Tuning.moveSensitivity, Tuning.turnSensitivity);
     FFileHelper::SaveStringToFile(History,
         *FPaths::Combine(RunDirectory, TEXT("parameter_changes.csv")),
         FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(),
