@@ -135,5 +135,41 @@ int main() {
     RobotSim::CommandRouter remappedRouter;
     remappedRouter.submitCommand({-0.6,0.4}, 5.0, 0.1);
     assert(remappedRouter.resolve(5.1,0.5).throttle < -0.59);
-    std::cout<<"遅延境界・順序逆転・初期化・共有制御・前後進・入力割当・マウス操作・モード裁定・機体応答: 成功\n";
+    // 旋回慣性：同じ操舵入力でも長い時定数は立ち上がりが緩やかで、
+    // 手を離した後にも角速度が残る。並進速度の設定には影響しない。
+    RobotSim::Drive sharp, inertial;
+    constexpr double dt = 1.0 / 120.0;
+    for (int i = 0; i < 60; ++i) {
+        sharp.step({0,1,0}, dt, 150, 120, 0.15, 0.02);
+        inertial.step({0,1,0}, dt, 150, 120, 0.15, 0.45);
+    }
+    assert(sharp.yawRate > 110);
+    assert(inertial.yawRate > 50 && inertial.yawRate < 100);
+    for (int i = 0; i < 60; ++i) {
+        sharp.step({0,0,0}, dt, 150, 120, 0.15, 0.02);
+        inertial.step({0,0,0}, dt, 150, 120, 0.15, 0.45);
+    }
+    assert(sharp.yawRate < 0.01);
+    assert(inertial.yawRate > 15);
+    assert(inertial.speed == 0 && inertial.lateralSpeed == 0);
+    // 4枚すべて中心高さ150mm以下、下面は地表面より上。
+    for (int profile = 0; profile < RobotSim::PanelPatternCount; ++profile) {
+        assert(RobotSim::panelPatternIsValid(profile));
+        for (int side = 0; side < 4; ++side) {
+            const double center = RobotSim::panelHeightCm(profile, side);
+            assert(center >= 6 && center <= 15);
+        }
+    }
+    assert(RobotSim::panelHeightCm(4, 0) == 12);
+    assert(RobotSim::panelHeightCm(4, 1) == 6);
+    assert(!RobotSim::panelPatternIsValid(-1));
+    assert(!RobotSim::panelPatternIsValid(5));
+    RobotSim::Tuning panelTuning;
+    assert(panelTuning.valid());
+    panelTuning.turnInertiaMs = 1501;
+    assert(!panelTuning.valid());
+    panelTuning.turnInertiaMs = 450;
+    panelTuning.panelPattern = 5;
+    assert(!panelTuning.valid());
+    std::cout<<"遅延境界・順序逆転・共有制御・前後進・旋回慣性・被弾パネル高さ・入力割当・機体応答: 成功\n";
 }
