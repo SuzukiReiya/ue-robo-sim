@@ -36,10 +36,13 @@ inline Command blend(Command manual, Command external, double weight) {
 }
 struct Drive {
     double speed=0, yawRate=0, lateralSpeed=0;
-    void step(Command c, double dt, double maxSpeed, double maxYaw, double tau) {
+    void step(Command c, double dt, double maxSpeed, double maxYaw, double tau,
+              double turnTau = -1.0) {
         const double a=1-std::exp(-dt/std::max(tau,0.001));
         speed+=(std::clamp(c.throttle,-1.0,1.0)*maxSpeed-speed)*a;
-        yawRate+=(std::clamp(c.turn,-1.0,1.0)*maxYaw-yawRate)*a;
+        const double angularTau = turnTau >= 0.0 ? turnTau : tau;
+        const double yawAlpha = 1-std::exp(-dt/std::max(angularTau,0.001));
+        yawRate+=(std::clamp(c.turn,-1.0,1.0)*maxYaw-yawRate)*yawAlpha;
         lateralSpeed+=(std::clamp(c.strafe,-1.0,1.0)*maxSpeed-lateralSpeed)*a;
     }
 };

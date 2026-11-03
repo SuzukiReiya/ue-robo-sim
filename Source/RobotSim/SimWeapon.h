@@ -12,8 +12,10 @@ public:
                  const FRotator& BodySway, double RecoilDegrees, FRandomStream& Random);
     FRotator RecoilOffset() const { return Recoil; }
     int32 FiredCount() const { return Count; }
+    int32 PanelHitCount() const { return PanelHits; }
 private:
     double NextFireTime = 0;
     int32 Count = 0;
+    int32 PanelHits = 0;
     FRotator Recoil = FRotator::ZeroRotator;
 };

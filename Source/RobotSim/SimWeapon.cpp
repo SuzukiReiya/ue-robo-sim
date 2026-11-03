@@ -24,18 +24,23 @@ bool FSimWeapon::TryFire(UWorld* World, AActor* Robot, double SimTime, bool bTri
         FRotator(DispersionPitch, DispersionYaw, 0);
     const FVector Direction = (Robot->GetActorRotation() + Offset).Vector();
     const FVector Start = Robot->GetActorLocation() +
-        Direction * 45.0f + FVector(0, 0, 20.0f);
+        Direction * 11.0f + FVector(0, 0, 7.0f);
     const FVector End = Start + Direction * 2500.0f;
     FCollisionQueryParams Query(SCENE_QUERY_STAT(SimFire), false, Robot);
     FHitResult Hit;
     const bool bHit = World->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Query);
     DrawDebugLine(World, Start, bHit ? Hit.ImpactPoint : End, FColor::Orange, false, 0.12f, 0, 2.0f);
+    const bool bPanelHit = bHit && Hit.GetComponent() &&
+        Hit.GetComponent()->ComponentHasTag(FName(TEXT("HitPanel")));
     if (bHit)
-        DrawDebugSphere(World, Hit.ImpactPoint, 5.0f, 8, FColor::Yellow, false, 0.16f);
+        DrawDebugSphere(World, Hit.ImpactPoint, 5.0f, 8,
+                        bPanelHit ? FColor::Green : FColor::Yellow, false, 0.16f);
+    if (bPanelHit) ++PanelHits;
     // キックバックは次フレーム以降のカメラ姿勢と射線に残る。
     Recoil.Pitch += RecoilDegrees * 0.6;
     Recoil.Yaw += DispersionYaw * 0.5;
-    UE_LOG(LogTemp, Display, TEXT("SIM_FIRE: 時刻=%.3f 発射数=%d 衝突=%s"),
-           SimTime, Count, bHit ? TEXT("はい") : TEXT("いいえ"));
+    UE_LOG(LogTemp, Display, TEXT("SIM_FIRE: 時刻=%.3f 発射数=%d 衝突=%s パネル被弾=%s 累計=%d"),
+           SimTime, Count, bHit ? TEXT("はい") : TEXT("いいえ"),
+           bPanelHit ? TEXT("はい") : TEXT("いいえ"), PanelHits);
     return true;
 }

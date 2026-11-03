@@ -24,6 +24,7 @@ private:
     RobotSim::Tuning WorkingTuning;
     UPROPERTY() TArray<TObjectPtr<UComboBoxString>> Combos;
     UPROPERTY() TArray<TObjectPtr<USpinBox>> Numbers;
+    UPROPERTY() TObjectPtr<UComboBoxString> PanelProfileCombo;
     UPROPERTY() TObjectPtr<UTextBlock> Message;
     UPROPERTY() TObjectPtr<UButton> SaveButton;
     bool bUpdating = false;
@@ -46,6 +47,8 @@ private:
     UFUNCTION() void CommandDelayChanged(float Value);
     UFUNCTION() void VideoDelayChanged(float Value);
     UFUNCTION() void DisplayFpsChanged(float Value);
+    UFUNCTION() void TurnInertiaChanged(float Value);
+    UFUNCTION() void PanelProfileChanged(FString Value, ESelectInfo::Type Selection);
     UFUNCTION() void SaveAndResume();
     UFUNCTION() void Resume();
     UFUNCTION() void Reset();

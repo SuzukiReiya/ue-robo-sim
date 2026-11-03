@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include "SimHitPanelConfig.h"
 
 namespace RobotSim {
 // 実験条件。大きい値が何を意味するかを各パラメータ名で明確にする。
@@ -9,6 +10,8 @@ struct Tuning {
     double mouseButtonStrength = 1.0;     // マウスボタンを走行軸に割当てたときの指令強度
     double bodySwayDegrees = 1.0;         // 加減速と旋回による揺れの最大規模
     double shotRecoilDegrees = 0.8;       // 発射時の射線とカメラの揺れ
+    double turnInertiaMs = 450.0;       // 旋回角速度の追従・減衰時定数（ms）
+    int panelPattern = 1;                // ヒットパネル中心高さのプリセット
     double tireSlip = 0.15;               // 0:高グリップ, 1:大きく滑る
     double commandDelayMs = 100;
     double videoDelayMs = 100;
@@ -16,7 +19,7 @@ struct Tuning {
 
     bool valid() const {
         const double v[] = {mouseHorizontal, mouseVertical, mouseButtonStrength,
-                            bodySwayDegrees, shotRecoilDegrees, tireSlip,
+                            bodySwayDegrees, shotRecoilDegrees, tireSlip, turnInertiaMs,
                             commandDelayMs, videoDelayMs, displayFps};
         for (double x : v) if (!std::isfinite(x)) return false;
         return mouseHorizontal >= 0.001 && mouseHorizontal <= 1.0
@@ -25,6 +28,8 @@ struct Tuning {
             && bodySwayDegrees >= 0 && bodySwayDegrees <= 8
             && shotRecoilDegrees >= 0 && shotRecoilDegrees <= 8
             && tireSlip >= 0 && tireSlip <= 1
+            && turnInertiaMs >= 0 && turnInertiaMs <= 1500
+            && panelPatternIsValid(panelPattern)
             && commandDelayMs >= 0 && commandDelayMs <= 1000
             && videoDelayMs >= 0 && videoDelayMs <= 1000
             && displayFps >= 1 && displayFps <= 60;

@@ -107,12 +107,13 @@ void USimSettingsWidget::NativeOnInitialized()
         TEXT("タイヤの滑り (0=滑らない、1=大きく滑る)"),
         TEXT("操作指令ラグ (ms)"),
         TEXT("映像表示ラグ (ms)"),
-        TEXT("カメラ表示FPS")
+        TEXT("カメラ表示FPS"),
+        TEXT("旋回慣性（ms、離した後の旋回の残り具合）")
     };
-    const float Low[] = {0.001, 0.001, 0.05, 0, 0, 0, 0, 0, 1};
-    const float High[] = {1, 1, 1, 8, 8, 1, 1000, 1000, 60};
-    const float Delta[] = {0.01, 0.01, 0.05, 0.1, 0.1, 0.05, 10, 10, 1};
-    for (int32 I=0; I<9; ++I) {
+    const float Low[] = {0.001, 0.001, 0.05, 0, 0, 0, 0, 0, 1, 0};
+    const float High[] = {1, 1, 1, 8, 8, 1, 1000, 1000, 60, 1500};
+    const float Delta[] = {0.01, 0.01, 0.05, 0.1, 0.1, 0.05, 10, 10, 1, 25};
+    for (int32 I=0; I<10; ++I) {
         auto* Row = MakeRow(OptionTitles[I]);
         auto* Spin = WidgetTree->ConstructWidget<USpinBox>();
         Spin->SetMinValue(Low[I]);
@@ -134,6 +135,23 @@ void USimSettingsWidget::NativeOnInitialized()
     Numbers[6]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::CommandDelayChanged);
     Numbers[7]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::VideoDelayChanged);
     Numbers[8]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::DisplayFpsChanged);
+    Numbers[9]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::TurnInertiaChanged);
+
+    // 地表面から75°で固定する。パネル中心高さのみルール内の5パターンを選択。
+    auto* PanelRow = MakeRow(TEXT("敵機ヒットパネルの高さ配置"));
+    PanelProfileCombo = WidgetTree->ConstructWidget<UComboBoxString>();
+    PanelProfileCombo->SetItemStyle(Combos[0]->GetItemStyle());
+    PanelProfileCombo->ForegroundColor = FSlateColor(FLinearColor::White);
+    PanelProfileCombo->SetContentPadding(FMargin(9,5));
+    PanelProfileCombo->AddOption(TEXT("低: 6cm（四方向）"));
+    PanelProfileCombo->AddOption(TEXT("標準: 9cm（四方向）"));
+    PanelProfileCombo->AddOption(TEXT("高: 12cm（四方向）"));
+    PanelProfileCombo->AddOption(TEXT("上限付近: 14.5cm（四方向）"));
+    PanelProfileCombo->AddOption(TEXT("段違い: 前後12cm・左右6cm"));
+    PanelRow->AddChildToHorizontalBox(PanelProfileCombo)->SetSize(
+        FSlateChildSize(ESlateSizeRule::Fill));
+    PanelProfileCombo->OnSelectionChanged.AddDynamic(
+        this, &USimSettingsWidget::PanelProfileChanged);
     Contents->AddChildToVerticalBox(MakeLabel(
         TEXT("注意: 慣性揺れ・射撃反動はカメラと射線に影響します。"), 12))
         ->SetPadding(FMargin(5, 9));
@@ -169,7 +187,7 @@ void USimSettingsWidget::SetSettings(const RobotSim::InputBindings& Current,
 
 void USimSettingsWidget::Refresh()
 {
-    if (Combos.Num() != 7 || Numbers.Num() != 9) return;
+    if (Combos.Num() != 7 || Numbers.Num() != 10 || !PanelProfileCombo) return;
     bUpdating = true;
     const RobotSim::InputSource Keys[] = {
         Working.forward,
@@ -191,10 +209,13 @@ void USimSettingsWidget::Refresh()
         WorkingTuning.tireSlip,
         WorkingTuning.commandDelayMs,
         WorkingTuning.videoDelayMs,
-        WorkingTuning.displayFps
+        WorkingTuning.displayFps,
+        WorkingTuning.turnInertiaMs
     };
-    for (int32 I=0; I<9; ++I)
+    for (int32 I=0; I<10; ++I)
         Numbers[I]->SetValue(static_cast<float>(Values[I]));
+    PanelProfileCombo->SetSelectedOption(
+        PanelProfileCombo->GetOptionAtIndex(WorkingTuning.panelPattern));
     bUpdating = false;
     const bool bValid = Working.valid() && WorkingTuning.valid();
     if (SaveButton) SaveButton->SetIsEnabled(bValid);
@@ -233,6 +254,7 @@ void USimSettingsWidget::OnNumber(int32 Index, float Value)
     case 6: WorkingTuning.commandDelayMs = Value; break;
     case 7: WorkingTuning.videoDelayMs = Value; break;
     case 8: WorkingTuning.displayFps = Value; break;
+    case 9: WorkingTuning.turnInertiaMs = Value; break;
     default: return;
     }
     // 編集中にスピン値を書き戻すと入力欄がリセットされるので状態表示のみ更新。
@@ -255,6 +277,19 @@ void USimSettingsWidget::SlipChanged(float V) { OnNumber(5, V); }
 void USimSettingsWidget::CommandDelayChanged(float V) { OnNumber(6, V); }
 void USimSettingsWidget::VideoDelayChanged(float V) { OnNumber(7, V); }
 void USimSettingsWidget::DisplayFpsChanged(float V) { OnNumber(8, V); }
+void USimSettingsWidget::TurnInertiaChanged(float V) { OnNumber(9, V); }
+void USimSettingsWidget::PanelProfileChanged(FString Value, ESelectInfo::Type)
+{
+    if (bUpdating || !PanelProfileCombo) return;
+    for (int32 I=0; I<RobotSim::PanelPatternCount; ++I) {
+        if (PanelProfileCombo->GetOptionAtIndex(I) == Value) {
+            WorkingTuning.panelPattern = I;
+            break;
+        }
+    }
+    const bool bValid = Working.valid() && WorkingTuning.valid();
+    if (SaveButton) SaveButton->SetIsEnabled(bValid);
+}
 
 void USimSettingsWidget::SaveAndResume()
 {
