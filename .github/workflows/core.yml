@@ -11,8 +11,9 @@ jobs:
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror Tests/test_core.cpp -o /tmp/test-core
           /tmp/test-core
-          python3 -m py_compile Clients/*.py Scripts/*.py Tests/test_textures.py
+          python3 -m py_compile Clients/*.py Scripts/*.py Tests/*.py
           python3 Tests/test_textures.py
+          python3 Tests/test_hit_panel_mesh.py
   powershell:
     runs-on: windows-latest
     steps:
