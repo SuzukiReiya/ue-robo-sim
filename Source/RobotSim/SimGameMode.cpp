@@ -111,8 +111,10 @@ void ASimGameMode::Step(double Dt)
             const double Delay = FMath::Max(
                 0.0f, CommandDelayMs + Random.FRandRange(-JitterMs, JitterMs)) / 1000.0;
             Actions = RobotSim::mapInput(Bindings, RawInput);
-            Controller.submitCommand(Actions.movement, SimTime, Delay);
+            Controller.submitActions(Actions, SimTime, Delay);
         }
+        RawInput.mouseX = 0;
+        RawInput.mouseY = 0;
     }
     RobotSim::Command Applied = Controller.resolve(SimTime, SharedWeight);
     // 緊急停止だけは通常の指令遅延・モード裁定を通さない。
@@ -122,9 +124,8 @@ void ASimGameMode::Step(double Dt)
         Vehicle.ResetMotion();
         Actions.fire = false;
     }
-    if (Controller.mode() != RobotSim::Mode::Automatic &&
-        !FSimKeyboardInput::EmergencyStop(PC))
-        Weapon.TryFire(GetWorld(), Robot, SimTime, Actions.fire);
+    if (!FSimKeyboardInput::EmergencyStop(PC))
+        Weapon.TryFire(GetWorld(), Robot, SimTime, Controller.fireActive());
     Vehicle.Advance(Applied, Dt);
     Target->SetActorLocation(FVector(400, 300 * std::sin(SimTime * 0.5), 25));
     if (Log && SimTime >= NextLog) {
@@ -159,7 +160,11 @@ void ASimGameMode::Tick(float DeltaSeconds)
     }
     // メニュー中はシミュレーション時間、機体、映像、対象、指令経路を停止する。
     if (bPaused) return;
-    RawInput = FSimKeyboardInput::Read(GetWorld()->GetFirstPlayerController());
+    const RobotSim::RawInput FrameInput =
+        FSimKeyboardInput::Read(GetWorld()->GetFirstPlayerController());
+    RawInput.held = FrameInput.held;
+    RawInput.mouseX += FrameInput.mouseX;
+    RawInput.mouseY += FrameInput.mouseY;
     ReceiveExternal();
     // 重いフレームでは追い付ける分だけ進め、破棄時間をログに明示。
     if(DeltaSeconds>0.25f) UE_LOG(LogTemp,Warning,TEXT("SIM_OVERRUN: %.6f秒を破棄。実時間評価からこの試行を除外してください。"),DeltaSeconds-0.25f);
@@ -177,7 +182,7 @@ FString ASimGameMode::Status() const
     if (!bDebug) return FString();
     const FVector Position = Robot ? Robot->GetActorLocation() : FVector::ZeroVector;
     return FString::Printf(
-        TEXT("1:手動 2:共有 3:自動 | モード=%d | W/S:前後 A/D:旋回 | Space:非常停止\n")
+        TEXT("1:手動 2:共有 3:自動 | モード=%d | Space:非常停止 Esc:操作設定\n")
         TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
         TEXT("射撃回数=%d | 指令 %.0fms 映像 %.0fms | 画像経過 %.0fms | Esc:設定"),
         static_cast<int32>(Controller.mode()),
