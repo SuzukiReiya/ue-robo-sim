@@ -24,8 +24,8 @@ void URobotVideoPipeline::Initialize(AActor* CameraRobot, bool bEnableExport)
     Sensor->PostProcessSettings.AutoExposureBias = 0;
     Sensor->RegisterComponent();
     Sensor->HideActorComponents(CameraRobot);
-    // カメラは640×360、最大20fps。表示待ちのフレームは上書きしない。
-    for (int32 I = 0; I < 32; ++I) {
+    // 640×360、最大60fpsと映像遅延最大1秒に対し十分な待機バッファを確保。
+    for (int32 I = 0; I < 96; ++I) {
         auto* Texture = NewObject<UTextureRenderTarget2D>(this);
         Texture->RenderTargetFormat = RTF_RGBA8;
         Texture->InitAutoFormat(640, 360);
