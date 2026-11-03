@@ -50,11 +50,13 @@ public:
     }
     bool submitExternal(double now, double sequence, Command command) {
         if (!std::isfinite(sequence) || !std::isfinite(command.throttle) ||
-            !std::isfinite(command.turn) || sequence <= lastSequence_) return false;
+            !std::isfinite(command.turn) || !std::isfinite(command.strafe) ||
+            sequence <= lastSequence_) return false;
         lastSequence_ = sequence;
         lastExternal_ = now;
         external_ = {std::clamp(command.throttle, -1.0, 1.0),
-                     std::clamp(command.turn, -1.0, 1.0)};
+                     std::clamp(command.turn, -1.0, 1.0),
+                     std::clamp(command.strafe, -1.0, 1.0)};
         return true;
     }
     Command resolve(double now, double sharedWeight) {
