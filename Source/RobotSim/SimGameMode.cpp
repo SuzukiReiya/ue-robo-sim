@@ -441,16 +441,25 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
     VideoDelayMs = static_cast<float>(Tuning.videoDelayMs);
     Controller.emergencyStop();
     Actions = {};
-    // 実験中にパラメータを変更した履歴を時刻付きで保存する。
+    // 数値と単位をログの列名に明記。感度も新しい2軸のみを記録する。
+    const FString HistoryPath =
+        FPaths::Combine(RunDirectory, TEXT("parameter_changes.csv"));
+    if (!IFileManager::Get().FileExists(*HistoryPath)) {
+        FFileHelper::SaveStringToFile(
+            TEXT("sim_s,body_sway_deg,shot_recoil_deg,tire_slip,mouse_button_strength,")
+            TEXT("command_delay_ms,video_delay_ms,display_fps,turn_inertia_ms,")
+            TEXT("panel_pattern,move_sensitivity,turn_sensitivity\n"),
+            *HistoryPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    }
     const FString History = FString::Printf(
-        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%d,%.1f,%.1f\n"),
+        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.0f,%.0f,%.1f,%.1f,%d,%.1f,%.1f\n"),
         SimTime, Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees,
-        Tuning.tireSlip, Tuning.moveSensitivity, Tuning.turnSensitivity,
-        Tuning.mouseButtonStrength, Tuning.commandDelayMs, Tuning.videoDelayMs,
-        Tuning.displayFps, Tuning.turnInertiaMs, Tuning.panelPattern,
+        Tuning.tireSlip, Tuning.mouseButtonStrength,
+        Tuning.commandDelayMs, Tuning.videoDelayMs, Tuning.displayFps,
+        Tuning.turnInertiaMs, Tuning.panelPattern,
         Tuning.moveSensitivity, Tuning.turnSensitivity);
     FFileHelper::SaveStringToFile(History,
-        *FPaths::Combine(RunDirectory, TEXT("parameter_changes.csv")),
+        *HistoryPath,
         FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(),
         FILEWRITE_Append);
     return true;
