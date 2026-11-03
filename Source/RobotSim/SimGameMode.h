@@ -5,6 +5,7 @@
 #include "SimVehicle.h"
 #include "SimInputBindings.h"
 #include "SimWeapon.h"
+#include "SimHitPanels.h"
 #include "Serialization/Archive.h"
 #include "SimGameMode.generated.h"
 
@@ -43,6 +44,7 @@ private:
     RobotSim::CommandRouter Controller;
     FSimVehicle Vehicle;
     FSimWeapon Weapon;
+    FSimHitPanels HitPanels;
     RobotSim::InputBindings Bindings;
     RobotSim::Tuning Tuning;
     RobotSim::RawInput RawInput;
