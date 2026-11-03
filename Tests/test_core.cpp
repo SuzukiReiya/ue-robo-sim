@@ -193,24 +193,71 @@ int main() {
     assert(!assistRouter.assistActive());
     // カメラ上部・砲口下部による視差。画面中央であっても射線は上向き。
     namespace Aim = RobotSim::Aim;
+    // 既存の中心距離・射線視差・遮蔽条件を満たす正面パネル。
+    const Aim::Vec3 frontNormal{-1,0,0};
     const std::vector<Aim::Candidate> panels = {
-        {0,{400,0,10},true}, {1,{400,200,10},true}};
+        {0,{400,0,10},true,frontNormal},
+        {1,{400,200,10},true,frontNormal}};
     auto selected = Aim::select({0,0,18},0,0,{17,0,8},panels);
     assert(selected.found && selected.id==0);
     assert(selected.pitchDeg>0 && selected.pitchDeg<2);
     assert(std::abs(selected.yawDeg)<1e-10);
     auto hidden = Aim::select({0,0,18},0,0,{17,0,8},
-                              {{0,{400,0,10},false}});
+                              {{0,{400,0,10},false,frontNormal}});
     assert(!hidden.found);
     auto outside = Aim::select({0,0,18},0,0,{17,0,8},
-                               {{0,{620,0,10},true}});
+                               {{0,{620,0,10},true,frontNormal}});
     assert(!outside.found);
     auto behind = Aim::select({0,0,18},0,0,{17,0,8},
-                              {{0,{-200,0,10},true}});
+                              {{0,{-200,0,10},true,frontNormal}});
     assert(!behind.found);
     auto farOffAxis = Aim::select({0,0,18},0,0,{17,0,8},
-                                   {{0,{300,250,10},true}});
+                                   {{0,{300,250,10},true,frontNormal}});
     assert(!farOffAxis.found);
+
+    // パネル前面法線と自機方向の角度は、画面中心・距離と独立した必須条件。
+    // 正面を0度、横向きを90度、背面を180度として角度の境界も検証する。
+    const Aim::Vec3 viewer{0,0,10}, center{400,0,10};
+    assert(Aim::facesViewer(center, {-1,0,0}, viewer, 45.0));
+    assert(!Aim::facesViewer(center, {1,0,0}, viewer, 45.0));
+    assert(!Aim::facesViewer(center, {0,1,0}, viewer, 45.0));
+    assert(!Aim::facesViewer(center, {0,0,0}, viewer, 90.0));
+    assert(!Aim::facesViewer(center, {-1,0,0}, viewer, -1.0));
+    assert(!Aim::facesViewer(center, {-1,0,0}, viewer, 91.0));
+    assert(Aim::facesViewer(center,
+                            {-std::cos(Aim::radians(30)),std::sin(Aim::radians(30)),0},
+                            viewer, 45.0));
+    assert(!Aim::facesViewer(center,
+                             {-std::cos(Aim::radians(60)),std::sin(Aim::radians(60)),0},
+                             viewer, 45.0));
+    // 自転する2機目が背面・斜めを見せたときは、カメラ中央でも選ばれない。
+    auto turnedAway = Aim::select({0,0,10},0,0,{17,0,8},
+                                  {{0,{400,0,10},true,{1,0,0}}});
+    assert(!turnedAway.found);
+    auto sideOn = Aim::select({0,0,10},0,0,{17,0,8},
+                              {{0,{400,0,10},true,{0,1,0}}});
+    assert(!sideOn.found);
+    // 背面のほうが中心に近くても、正面を見せている別パネルを選ぶ。
+    auto preferFacing = Aim::select({0,0,10},0,0,{17,0,8},{
+        {0,{350,0,10},true,{1,0,0}},
+        {1,{400,15,10},true,{-1,0,0}}});
+    assert(preferFacing.found && preferFacing.id==1);
+    auto strictAngle = Aim::select({0,0,10},0,0,{17,0,8},{
+        {1,{400,0,10},true,
+            {-std::cos(Aim::radians(30)), std::sin(Aim::radians(30)),0}}},
+        90.0,640.0/360.0,600.0,0.35,20.0);
+    assert(!strictAngle.found);
+    auto relaxedAngle = Aim::select({0,0,10},0,0,{17,0,8},{
+        {1,{400,0,10},true,
+            {-std::cos(Aim::radians(30)), std::sin(Aim::radians(30)),0}}},
+        90.0,640.0/360.0,600.0,0.35,40.0);
+    assert(relaxedAngle.found);
+    RobotSim::Tuning facingTuning;
+    assert(facingTuning.valid() && facingTuning.aimFacingAngleDeg == 45.0);
+    facingTuning.aimFacingAngleDeg = -1.0;
+    assert(!facingTuning.valid());
+    facingTuning.aimFacingAngleDeg = 91.0;
+    assert(!facingTuning.valid());
     assert(Aim::turnCorrection(0,10,0,120)>0);
     assert(Aim::pitchCorrection(0,5)>0);
     assert(Aim::turnCorrection(0,0,0,120)==0);

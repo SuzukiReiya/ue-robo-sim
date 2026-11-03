@@ -13,6 +13,7 @@ struct Tuning {
     double bodySwayDegrees = 1.0;         // 加減速と旋回による揺れの最大規模
     double shotRecoilDegrees = 0.8;       // 発射時の射線とカメラの揺れ
     double turnInertiaMs = 450.0;       // 旋回角速度の追従・減衰時定数（ms）
+    double aimFacingAngleDeg = 45.0;      // パネル前面の自機に対する許容角（度）
     int panelPattern = 1;                // ヒットパネル中心高さのプリセット
     double tireSlip = 0.15;               // 0:高グリップ, 1:大きく滑る
     double commandDelayMs = 100;
@@ -25,6 +26,7 @@ struct Tuning {
     bool valid() const {
         const double v[] = {moveSensitivity, turnSensitivity, mouseButtonStrength,
                             bodySwayDegrees, shotRecoilDegrees, tireSlip, turnInertiaMs,
+                            aimFacingAngleDeg,
                             commandDelayMs, videoDelayMs, displayFps};
         for (double x : v) if (!std::isfinite(x)) return false;
         return moveSensitivity >= 0.1 && moveSensitivity <= 20.0
@@ -34,6 +36,7 @@ struct Tuning {
             && shotRecoilDegrees >= 0 && shotRecoilDegrees <= 8
             && tireSlip >= 0 && tireSlip <= 1
             && turnInertiaMs >= 0 && turnInertiaMs <= 1500
+            && aimFacingAngleDeg >= 0 && aimFacingAngleDeg <= 90
             && panelPatternIsValid(panelPattern)
             && commandDelayMs >= 0 && commandDelayMs <= 1000
             && videoDelayMs >= 0 && videoDelayMs <= 1000

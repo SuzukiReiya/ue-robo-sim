@@ -13,7 +13,8 @@ RobotSim::Aim::Vec3 ToSimple(const FVector& P) {
 RobotSim::Aim::Selection FSimAimAssist::Find(
     UWorld* World, const FTransform& Camera, const FVector& MuzzleLocation,
     float HorizontalFov, AActor* Viewer,
-    AActor* FirstTarget, AActor* SecondTarget)
+    AActor* FirstTarget, AActor* SecondTarget,
+    double MaxFacingAngleDeg)
 {
     if (!World || !Viewer) return {};
     std::vector<RobotSim::Aim::Candidate> Candidates;
@@ -36,7 +37,8 @@ RobotSim::Aim::Selection FSimAimAssist::Find(
             const bool bVisible = bHit && Hit.GetComponent() == Sensor;
             Candidates.push_back({
                 TargetIndex * 4 + PanelIndex,
-                ToSimple(End), bVisible
+                ToSimple(End), bVisible,
+                ToSimple(Sensor->GetUpVector()) // パネル前面（ローカル+Z）
             });
             ++PanelIndex;
         }
@@ -45,5 +47,5 @@ RobotSim::Aim::Selection FSimAimAssist::Find(
     return RobotSim::Aim::select(
         ToSimple(Camera.GetLocation()), Angle.Yaw, Angle.Pitch,
         ToSimple(MuzzleLocation), Candidates,
-        HorizontalFov, 640.0/360.0, 600.0, 0.35);
+        HorizontalFov, 640.0/360.0, 600.0, 0.35, MaxFacingAngleDeg);
 }

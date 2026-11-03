@@ -167,12 +167,13 @@ void USimSettingsWidget::NativeOnInitialized()
         TEXT("射撃ごとのブレ (度)"),
         TEXT("タイヤの滑り (0=滑らない、1=大きく滑る)"),
         TEXT("カメラ表示FPS"),
-        TEXT("旋回慣性（ms、離した後の旋回の残り具合）")
+        TEXT("旋回慣性（ms、離した後の旋回の残り具合）"),
+        TEXT("照準補正：パネル正面の許容角度（度）")
     };
-    const float Low[] = {0.05, 0, 0, 0, 1, 0};
-    const float High[] = {1, 8, 8, 1, 60, 1500};
-    const float Delta[] = {0.05, 0.1, 0.1, 0.05, 1, 25};
-    for (int32 I=0; I<6; ++I) {
+    const float Low[] = {0.05, 0, 0, 0, 1, 0, 0};
+    const float High[] = {1, 8, 8, 1, 60, 1500, 90};
+    const float Delta[] = {0.05, 0.1, 0.1, 0.05, 1, 25, 1};
+    for (int32 I=0; I<7; ++I) {
         auto* Row = MakeRow(OptionTitles[I]);
         auto* Spin = WidgetTree->ConstructWidget<USpinBox>();
         Spin->SetMinValue(Low[I]);
@@ -191,6 +192,7 @@ void USimSettingsWidget::NativeOnInitialized()
     Numbers[3]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::SlipChanged);
     Numbers[4]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::DisplayFpsChanged);
     Numbers[5]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::TurnInertiaChanged);
+    Numbers[6]->OnValueChanged.AddDynamic(this, &USimSettingsWidget::AimFacingChanged);
 
     // 地表面から75°で固定する。パネル中心高さのみルール内の5パターンを選択。
     auto* PanelRow = MakeRow(TEXT("敵機ヒットパネルの高さ配置"));
@@ -242,7 +244,7 @@ void USimSettingsWidget::SetSettings(const RobotSim::InputBindings& Current,
 
 void USimSettingsWidget::Refresh()
 {
-    if (Combos.Num() != 10 || Numbers.Num() != 6 || BasicNumbers.Num() != 4 ||
+    if (Combos.Num() != 10 || Numbers.Num() != 7 || BasicNumbers.Num() != 4 ||
         BasicSliders.Num() != 4 || !PanelProfileCombo) return;
     bUpdating = true;
     const RobotSim::InputSource Keys[] = {
@@ -273,9 +275,10 @@ void USimSettingsWidget::Refresh()
         WorkingTuning.shotRecoilDegrees,
         WorkingTuning.tireSlip,
         WorkingTuning.displayFps,
-        WorkingTuning.turnInertiaMs
+        WorkingTuning.turnInertiaMs,
+        WorkingTuning.aimFacingAngleDeg
     };
-    for (int32 I=0; I<6; ++I)
+    for (int32 I=0; I<7; ++I)
         Numbers[I]->SetValue(static_cast<float>(Values[I]));
     PanelProfileCombo->SetSelectedOption(
         PanelProfileCombo->GetOptionAtIndex(WorkingTuning.panelPattern));
@@ -313,6 +316,7 @@ void USimSettingsWidget::OnNumber(int32 Index, float Value)
     case 3: WorkingTuning.tireSlip = Value; break;
     case 4: WorkingTuning.displayFps = Value; break;
     case 5: WorkingTuning.turnInertiaMs = Value; break;
+    case 6: WorkingTuning.aimFacingAngleDeg = Value; break;
     default: return;
     }
     // 編集中にスピン値を書き戻すと入力欄がリセットされるので状態表示のみ更新。
@@ -367,6 +371,7 @@ void USimSettingsWidget::RecoilChanged(float V) { OnNumber(2, V); }
 void USimSettingsWidget::SlipChanged(float V) { OnNumber(3, V); }
 void USimSettingsWidget::DisplayFpsChanged(float V) { OnNumber(4, V); }
 void USimSettingsWidget::TurnInertiaChanged(float V) { OnNumber(5, V); }
+void USimSettingsWidget::AimFacingChanged(float V) { OnNumber(6, V); }
 void USimSettingsWidget::MoveSensitivityChanged(float V) { OnBasicNumber(0, V); }
 void USimSettingsWidget::TurnSensitivityChanged(float V) { OnBasicNumber(1, V); }
 void USimSettingsWidget::BasicCommandDelayChanged(float V) { OnBasicNumber(2, V); }

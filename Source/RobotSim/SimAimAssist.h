@@ -13,5 +13,6 @@ public:
     static RobotSim::Aim::Selection Find(
         UWorld* World, const FTransform& Camera, const FVector& MuzzleLocation,
         float HorizontalFov, AActor* Viewer,
-        AActor* FirstTarget, AActor* SecondTarget);
+        AActor* FirstTarget, AActor* SecondTarget,
+        double MaxFacingAngleDeg);
 };
