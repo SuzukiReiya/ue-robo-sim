@@ -16,7 +16,8 @@ class ROBOTSIM_API URobotVideoPipeline : public UObject
 public:
     void Initialize(AActor* CameraRobot, bool bEnableExport);
     void Advance(double SimTime, float VideoDelayMs, float JitterMs,
-                 float LossRate, FRandomStream& Random);
+                 float LossRate, FRandomStream& Random, double DisplayFps);
+    void SetAimOffset(const FRotator& Offset);
     UTextureRenderTarget2D* DisplayTexture() const;
     double DisplayAge(double SimTime) const;
 private:
