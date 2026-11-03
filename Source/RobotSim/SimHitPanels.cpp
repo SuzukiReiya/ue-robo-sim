@@ -31,9 +31,24 @@ void FSimHitPanels::Initialize(AActor* Target, int Pattern)
     if (!Target || !Target->GetRootComponent()) return;
     auto* PanelMesh = LoadObject<UStaticMesh>(
         nullptr, TEXT("/Game/Generated/SM_GroundHitPanelModule.SM_GroundHitPanelModule"));
+    if (PanelMesh) {
+        const FVector Size = PanelMesh->GetBoundingBox().GetSize();
+        UE_LOG(LogTemp, Display,
+            TEXT("SIM_PANEL_MESH_BOUNDS: %.2f x %.2f x %.2f cm"),
+            Size.X, Size.Y, Size.Z);
+        // インポーターが軸を入れ替えた場合は、誤った取付角で表示せず簡易板を使用。
+        const bool bExpected = FMath::Abs(Size.X - 9.0) < 0.6 &&
+                               FMath::Abs(Size.Y - 9.0) < 0.6 &&
+                               Size.Z > 1.3 && Size.Z < 2.4;
+        if (!bExpected) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ヒットパネルOBJの単位・軸方向が不正です。簡易表示へ切替。"));
+            PanelMesh = nullptr;
+        }
+    }
     if (!PanelMesh) {
         UE_LOG(LogTemp, Warning,
-               TEXT("ヒットパネルOBJが未生成のため90mm角の簡易パネルを使用します。"));
+               TEXT("ヒットパネルOBJ未取込、または姿勢不正。90mm角の簡易板を使用します。"));
     }
     const FVector Direction[] = {
         FVector(1,0,0), FVector(0,1,0), FVector(-1,0,0), FVector(0,-1,0)
