@@ -24,8 +24,8 @@ void URobotVideoPipeline::Initialize(AActor* CameraRobot, bool bEnableExport)
     Sensor->PostProcessSettings.AutoExposureBias = 0;
     Sensor->RegisterComponent();
     Sensor->HideActorComponents(CameraRobot);
-    // カメラは640×360、最大20fps。表示待ちのフレームは上書きしない。
-    for (int32 I = 0; I < 32; ++I) {
+    // 640×360、最大60fpsと映像遅延最大1秒に対し十分な待機バッファを確保。
+    for (int32 I = 0; I < 96; ++I) {
         auto* Texture = NewObject<UTextureRenderTarget2D>(this);
         Texture->RenderTargetFormat = RTF_RGBA8;
         Texture->InitAutoFormat(640, 360);
@@ -61,11 +61,12 @@ void URobotVideoPipeline::Capture(double SimTime, float VideoDelayMs,
 }
 
 void URobotVideoPipeline::Advance(double SimTime, float VideoDelayMs,
-                                  float JitterMs, float LossRate, FRandomStream& Random)
+                                  float JitterMs, float LossRate, FRandomStream& Random,
+                                  double DisplayFps)
 {
     if (SimTime >= NextCapture) {
         Capture(SimTime, VideoDelayMs, JitterMs, LossRate, Random);
-        NextCapture = SimTime + 0.05;
+        NextCapture = SimTime + 1.0 / FMath::Clamp(DisplayFps, 1.0, 60.0);
     }
     for (int32 I = Pending.Num() - 1; I >= 0; --I) {
         const FPendingFrame F = Pending[I];
@@ -109,4 +110,9 @@ void URobotVideoPipeline::ExportFrame(UTextureRenderTarget2D* Texture,
     if (FFileHelper::SaveStringToFile(Manifest, *(Path + TEXT(".tmp")),
                                       FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
         IFileManager::Get().Move(*Path, *(Path + TEXT(".tmp")), true);
+}
+
+void URobotVideoPipeline::SetAimOffset(const FRotator& Offset)
+{
+    if (Sensor) Sensor->SetRelativeRotation(Offset);
 }

@@ -38,6 +38,9 @@ ASimGameMode::ASimGameMode()
 void ASimGameMode::BeginPlay()
 {
     Super::BeginPlay();
+    LoadInputBindings();
+    CommandDelayMs = static_cast<float>(Tuning.commandDelayMs);
+    VideoDelayMs = static_cast<float>(Tuning.videoDelayMs);
     FParse::Value(FCommandLine::Get(),TEXT("CommandDelayMs="),CommandDelayMs);
     FParse::Value(FCommandLine::Get(),TEXT("VideoDelayMs="),VideoDelayMs);
     FParse::Value(FCommandLine::Get(),TEXT("JitterMs="),JitterMs);
@@ -54,7 +57,9 @@ void ASimGameMode::BeginPlay()
     LossRate=Sanitize(LossRate,0,0,1);
     SharedWeight=Sanitize(SharedWeight,0.5f,0,1);
     Random.Initialize(Seed);
-    LoadInputBindings();
+    WeaponRandom.Initialize(Seed + 104729);
+    Tuning.commandDelayMs = CommandDelayMs;
+    Tuning.videoDelayMs = VideoDelayMs;
     bExport=FParse::Param(FCommandLine::Get(),TEXT("ExportFrames"));
     // 独立した環境・プラント・映像モジュールを初期化する。
     AActor* SpawnedRobot = nullptr;
@@ -72,9 +77,16 @@ void ASimGameMode::BeginPlay()
         FDateTime::UtcNow().ToString(TEXT("%Y%m%dT%H%M%S"))+TEXT("_")+FGuid::NewGuid().ToString());
     IFileManager::Get().MakeDirectory(*RunDirectory,true);
     Log.Reset(IFileManager::Get().CreateFileWriter(*FPaths::Combine(RunDirectory,TEXT("truth.csv"))));
-    const FString Header=TEXT("sim_s,x_cm,y_cm,yaw_deg,speed_cm_s,yaw_deg_s,manual_throttle,manual_turn,external_throttle,external_turn,applied_throttle,applied_turn,mode,display_age_s\n");
+    const FString Header=TEXT("sim_s,x_cm,y_cm,yaw_deg,speed_cm_s,yaw_deg_s,manual_throttle,manual_turn,external_throttle,external_turn,applied_throttle,applied_turn,mode,display_age_s,manual_strafe,external_strafe,applied_strafe,body_pitch,body_roll,shot_count\n");
     if(Log) { FTCHARToUTF8 Bytes(*Header); Log->Serialize((void*)Bytes.Get(),Bytes.Length()); }
-    const FString Settings=FString::Printf(TEXT("{\"seed\":%d,\"command_delay_ms\":%g,\"video_delay_ms\":%g,\"jitter_ms\":%g,\"loss_rate\":%g,\"shared_weight\":%g,\"export_frames\":%s,\"physics_hz\":120,\"camera_hz\":20}"),Seed,CommandDelayMs,VideoDelayMs,JitterMs,LossRate,SharedWeight,bExport?TEXT("true"):TEXT("false"));
+    const FString Settings = FString::Printf(
+        TEXT("{\"seed\":%d,\"command_delay_ms\":%g,\"video_delay_ms\":%g,")
+        TEXT("\"jitter_ms\":%g,\"loss_rate\":%g,\"shared_weight\":%g,")
+        TEXT("\"export_frames\":%s,\"physics_hz\":120,\"camera_hz\":%g,")
+        TEXT("\"body_sway_deg\":%g,\"shot_recoil_deg\":%g,\"tire_slip\":%g}"),
+        Seed, CommandDelayMs, VideoDelayMs, JitterMs, LossRate, SharedWeight,
+        bExport ? TEXT("true") : TEXT("false"), Tuning.displayFps,
+        Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees, Tuning.tireSlip);
     FFileHelper::SaveStringToFile(Settings,*FPaths::Combine(RunDirectory,TEXT("settings.json")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
     if(auto* PC=GetWorld()->GetFirstPlayerController()) { PC->bShowMouseCursor=false; PC->SetInputMode(FInputModeGameOnly()); }
     UE_LOG(LogTemp,Display,TEXT("ROBOT_SIM_READY: %s"),*RunDirectory);
@@ -97,7 +109,10 @@ void ASimGameMode::ReceiveExternal()
         if(!FJsonSerializer::Deserialize(Reader,Object)||!Object.IsValid()) continue;
         double Seq,T,R;
         if(!Object->TryGetNumberField(TEXT("seq"),Seq)||!Object->TryGetNumberField(TEXT("throttle"),T)||!Object->TryGetNumberField(TEXT("turn"),R)) continue;
-        Controller.submitExternal(SimTime, Seq, {T, R});
+        double Strafe = 0;
+        if (Object->HasField(TEXT("strafe")) &&
+            !Object->TryGetNumberField(TEXT("strafe"), Strafe)) continue;
+        Controller.submitExternal(SimTime, Seq, {T, R, Strafe});
     }
 }
 void ASimGameMode::Step(double Dt)
@@ -110,7 +125,7 @@ void ASimGameMode::Step(double Dt)
         if (Random.FRand() >= LossRate) {
             const double Delay = FMath::Max(
                 0.0f, CommandDelayMs + Random.FRandRange(-JitterMs, JitterMs)) / 1000.0;
-            Actions = RobotSim::mapInput(Bindings, RawInput);
+            Actions = RobotSim::mapInput(Bindings, RawInput, Tuning);
             Controller.submitActions(Actions, SimTime, Delay);
         }
         RawInput.mouseX = 0;
@@ -124,9 +139,11 @@ void ASimGameMode::Step(double Dt)
         Vehicle.ResetMotion();
         Actions.fire = false;
     }
+    Weapon.Advance(Dt);
+    Vehicle.Advance(Applied, Dt, Tuning);
     if (!FSimKeyboardInput::EmergencyStop(PC))
-        Weapon.TryFire(GetWorld(), Robot, SimTime, Controller.fireActive());
-    Vehicle.Advance(Applied, Dt);
+        Weapon.TryFire(GetWorld(), Robot, SimTime, Controller.fireActive(),
+                       Vehicle.BodySway(), Tuning.shotRecoilDegrees, WeaponRandom);
     Target->SetActorLocation(FVector(400, 300 * std::sin(SimTime * 0.5), 25));
     if (Log && SimTime >= NextLog) {
         NextLog = SimTime + 0.02;
@@ -134,12 +151,14 @@ void ASimGameMode::Step(double Dt)
         const RobotSim::Command Manual = Controller.manual();
         const RobotSim::Command External = Controller.freshExternal(SimTime);
         const FString Line = FString::Printf(
-            TEXT("%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%.6f\n"),
+            TEXT("%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%.6f,%.3f,%.3f,%.3f,%.4f,%.4f,%d\n"),
             SimTime, P.X, P.Y, Robot->GetActorRotation().Yaw,
             Vehicle.Speed(), Vehicle.YawRate(),
             Manual.throttle, Manual.turn, External.throttle, External.turn,
             Applied.throttle, Applied.turn, static_cast<int32>(Controller.mode()),
-            Video ? Video->DisplayAge(SimTime) : -1.0);
+            Video ? Video->DisplayAge(SimTime) : -1.0,
+            Manual.strafe, External.strafe, Applied.strafe,
+            Vehicle.BodySway().Pitch, Vehicle.BodySway().Roll, Weapon.FiredCount());
         FTCHARToUTF8 Bytes(*Line);
         Log->Serialize((void*)Bytes.Get(), Bytes.Length());
     }
@@ -187,7 +206,10 @@ void ASimGameMode::Tick(float DeltaSeconds)
     Accumulator+=FMath::Min(DeltaSeconds,0.25f);
     constexpr double Dt=1.0/120.0;
     while(Accumulator>=Dt) { Step(Dt); Accumulator-=Dt; }
-    if (Video) Video->Advance(SimTime, VideoDelayMs, JitterMs, LossRate, Random);
+    if (Video) {
+        Video->SetAimOffset(Vehicle.BodySway() + Weapon.RecoilOffset());
+        Video->Advance(SimTime, VideoDelayMs, JitterMs, LossRate, Random, Tuning.displayFps);
+    }
 }
 UTextureRenderTarget2D* ASimGameMode::DisplayTexture() const
 {
@@ -200,12 +222,13 @@ FString ASimGameMode::Status() const
     return FString::Printf(
         TEXT("1:手動 2:共有 3:自動 | モード=%d | Space:非常停止 Esc:操作設定\n")
         TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
-        TEXT("射撃回数=%d | 指令 %.0fms 映像 %.0fms | 画像経過 %.0fms | Esc:設定"),
+        TEXT("横速度=%+.1fcm/s 射撃=%d | 指令 %.0fms 映像 %.0fms | FPS %.0f | 画像経過 %.0fms"),
         static_cast<int32>(Controller.mode()),
         Controller.manual().throttle, Controller.applied().throttle,
         Vehicle.Speed(), Position.X, Position.Y,
         Vehicle.IsBlocked() ? TEXT("はい") : TEXT("いいえ"),
-        Weapon.FiredCount(), CommandDelayMs, VideoDelayMs,
+        Vehicle.LateralSpeed(), Weapon.FiredCount(), CommandDelayMs, VideoDelayMs,
+        Tuning.displayFps,
         Video ? Video->DisplayAge(SimTime) * 1000 : -1.0);
 }
 
@@ -218,50 +241,151 @@ FString ASimGameMode::BindingsPath() const
 void ASimGameMode::LoadInputBindings()
 {
     Bindings = {};
+    Tuning = {};
     FString Json;
     if (!FFileHelper::LoadFileToString(Json, *BindingsPath())) return;
     TSharedPtr<FJsonObject> Obj;
     const auto Reader = TJsonReaderFactory<>::Create(Json);
     if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) {
-        UE_LOG(LogTemp, Warning, TEXT("操作設定を読めません。初期値を使用します。"));
+        UE_LOG(LogTemp, Warning, TEXT("操作・物理設定のJSONが不正です。初期値を使用します。"));
         return;
     }
     RobotSim::InputBindings Loaded;
     const TCHAR* Fields[] = {
-        TEXT("forward"), TEXT("backward"), TEXT("turn_left"),
-        TEXT("turn_right"), TEXT("fire")
+        TEXT("forward"),
+        TEXT("backward"),
+        TEXT("turn_left"),
+        TEXT("turn_right"),
+        TEXT("fire"),
+        TEXT("strafe_left"),
+        TEXT("strafe_right")
     };
     RobotSim::InputSource* Entries[] = {
-        &Loaded.forward, &Loaded.backward, &Loaded.turnLeft,
-        &Loaded.turnRight, &Loaded.fire
+        &Loaded.forward,
+        &Loaded.backward,
+        &Loaded.turnLeft,
+        &Loaded.turnRight,
+        &Loaded.fire,
+        &Loaded.strafeLeft,
+        &Loaded.strafeRight
     };
-    for (int32 I=0; I<5; ++I) {
+    for (int32 I=0; I<7; ++I) {
         FString Token;
-        if (!Obj->TryGetStringField(Fields[I], Token) ||
-            !RobotSim::parseSource(TCHAR_TO_UTF8(*Token), *Entries[I])) {
-            UE_LOG(LogTemp, Warning, TEXT("操作設定の項目が無効です。初期値に戻します。"));
+        if (!Obj->TryGetStringField(Fields[I], Token)) {
+            if (I >= 5) {
+                // 旧版の5操作設定を読み込む。旧初期値だけ新初期値に移行する。
+                if (I == 5) {
+                    const bool OldDefault = Loaded.forward == RobotSim::InputSource::W &&
+                        Loaded.backward == RobotSim::InputSource::S &&
+                        Loaded.turnLeft == RobotSim::InputSource::A &&
+                        Loaded.turnRight == RobotSim::InputSource::D &&
+                        Loaded.fire == RobotSim::InputSource::MouseButtonLeft;
+                    if (OldDefault) {
+                        Loaded = {};
+                        break;
+                    }
+                    Loaded.strafeLeft = RobotSim::InputSource::None;
+                    Loaded.strafeRight = RobotSim::InputSource::None;
+                    break;
+                }
+            }
+            UE_LOG(LogTemp, Warning, TEXT("旧操作設定に不正な項目があるため初期値を使用します。"));
+            return;
+        }
+        if (!RobotSim::parseSource(TCHAR_TO_UTF8(*Token), *Entries[I])) {
+            UE_LOG(LogTemp, Warning, TEXT("操作割り当てが不正です。初期値を使用します。"));
             return;
         }
     }
-    if (Loaded.valid()) Bindings = Loaded;
-    else UE_LOG(LogTemp, Warning, TEXT("操作設定が重複しています。初期値に戻します。"));
+    if (!Loaded.valid()) {
+        UE_LOG(LogTemp, Warning, TEXT("割り当て重複のため初期値を使用します。"));
+        return;
+    }
+    Bindings = Loaded;
+    RobotSim::Tuning LoadedTuning;
+    const TCHAR* NumberFields[] = {
+        TEXT("mouse_horizontal"),
+        TEXT("mouse_vertical"),
+        TEXT("mouse_button_strength"),
+        TEXT("body_sway_deg"),
+        TEXT("shot_recoil_deg"),
+        TEXT("tire_slip"),
+        TEXT("command_delay_ms"),
+        TEXT("video_delay_ms"),
+        TEXT("display_fps")
+    };
+    double* Values[] = {
+        &LoadedTuning.mouseHorizontal,
+        &LoadedTuning.mouseVertical,
+        &LoadedTuning.mouseButtonStrength,
+        &LoadedTuning.bodySwayDegrees,
+        &LoadedTuning.shotRecoilDegrees,
+        &LoadedTuning.tireSlip,
+        &LoadedTuning.commandDelayMs,
+        &LoadedTuning.videoDelayMs,
+        &LoadedTuning.displayFps
+    };
+    for (int32 I=0; I<9; ++I) {
+        if (Obj->HasField(NumberFields[I]) &&
+            !Obj->TryGetNumberField(NumberFields[I], *Values[I])) {
+            UE_LOG(LogTemp, Warning, TEXT("設定数値が不正です。数値は初期値を使用します。"));
+            return;
+        }
+    }
+    if (LoadedTuning.valid()) Tuning = LoadedTuning;
+    else UE_LOG(LogTemp, Warning, TEXT("数値範囲が不正のため初期値を使用します。"));
 }
 
-bool ASimGameMode::ApplyInputBindings(const RobotSim::InputBindings& NewBindings)
+bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
+                                  const RobotSim::Tuning& NewTuning)
 {
-    if (!NewBindings.valid()) return false;
+    if (!NewBindings.valid() || !NewTuning.valid()) return false;
     TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-    Json->SetNumberField(TEXT("version"), 1);
+    Json->SetNumberField(TEXT("version"), 2);
     const TCHAR* Fields[] = {
-        TEXT("forward"), TEXT("backward"), TEXT("turn_left"),
-        TEXT("turn_right"), TEXT("fire")
+        TEXT("forward"),
+        TEXT("backward"),
+        TEXT("turn_left"),
+        TEXT("turn_right"),
+        TEXT("fire"),
+        TEXT("strafe_left"),
+        TEXT("strafe_right")
     };
     const RobotSim::InputSource Keys[] = {
-        NewBindings.forward, NewBindings.backward, NewBindings.turnLeft,
-        NewBindings.turnRight, NewBindings.fire
+        NewBindings.forward,
+        NewBindings.backward,
+        NewBindings.turnLeft,
+        NewBindings.turnRight,
+        NewBindings.fire,
+        NewBindings.strafeLeft,
+        NewBindings.strafeRight
     };
-    for (int32 I=0; I<5; ++I)
+    for (int32 I=0; I<7; ++I)
         Json->SetStringField(Fields[I], UTF8_TO_TCHAR(RobotSim::sourceToken(Keys[I])));
+    const TCHAR* NumberFields[] = {
+        TEXT("mouse_horizontal"),
+        TEXT("mouse_vertical"),
+        TEXT("mouse_button_strength"),
+        TEXT("body_sway_deg"),
+        TEXT("shot_recoil_deg"),
+        TEXT("tire_slip"),
+        TEXT("command_delay_ms"),
+        TEXT("video_delay_ms"),
+        TEXT("display_fps")
+    };
+    const double Values[] = {
+        NewTuning.mouseHorizontal,
+        NewTuning.mouseVertical,
+        NewTuning.mouseButtonStrength,
+        NewTuning.bodySwayDegrees,
+        NewTuning.shotRecoilDegrees,
+        NewTuning.tireSlip,
+        NewTuning.commandDelayMs,
+        NewTuning.videoDelayMs,
+        NewTuning.displayFps
+    };
+    for (int32 I=0; I<9; ++I)
+        Json->SetNumberField(NumberFields[I], Values[I]);
     FString Output;
     const auto Writer = TJsonWriterFactory<>::Create(&Output);
     if (!FJsonSerializer::Serialize(Json, Writer)) return false;
@@ -271,8 +395,22 @@ bool ASimGameMode::ApplyInputBindings(const RobotSim::InputBindings& NewBindings
             Output, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
         return false;
     Bindings = NewBindings;
+    Tuning = NewTuning;
+    CommandDelayMs = static_cast<float>(Tuning.commandDelayMs);
+    VideoDelayMs = static_cast<float>(Tuning.videoDelayMs);
     Controller.emergencyStop();
     Actions = {};
+    // 実験中にパラメータを変更した履歴を時刻付きで保存する。
+    const FString History = FString::Printf(
+        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f\n"),
+        SimTime, Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees,
+        Tuning.tireSlip, Tuning.mouseHorizontal, Tuning.mouseVertical,
+        Tuning.mouseButtonStrength, Tuning.commandDelayMs, Tuning.videoDelayMs,
+        Tuning.displayFps);
+    FFileHelper::SaveStringToFile(History,
+        *FPaths::Combine(RunDirectory, TEXT("parameter_changes.csv")),
+        FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(),
+        FILEWRITE_Append);
     return true;
 }
 
@@ -309,7 +447,7 @@ void ASimGameMode::SetSimulationPaused(bool bPause)
             return;
         }
         SettingsWidget->AddToViewport(100);
-        SettingsWidget->SetBindings(Bindings);
+        SettingsWidget->SetSettings(Bindings, Tuning);
         PC->bShowMouseCursor = true;
         FInputModeGameAndUI Mode;
         Mode.SetWidgetToFocus(SettingsWidget->TakeWidget());

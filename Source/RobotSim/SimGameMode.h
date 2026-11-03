@@ -27,7 +27,8 @@ public:
     UTextureRenderTarget2D* DisplayTexture() const;
     FString Status() const;
     void SetSimulationPaused(bool bPause);
-    bool ApplyInputBindings(const RobotSim::InputBindings& NewBindings);
+    bool ApplySettings(const RobotSim::InputBindings& NewBindings,
+                       const RobotSim::Tuning& NewTuning);
 private:
     void Step(double Dt);
     void ReceiveExternal();
@@ -43,6 +44,7 @@ private:
     FSimVehicle Vehicle;
     FSimWeapon Weapon;
     RobotSim::InputBindings Bindings;
+    RobotSim::Tuning Tuning;
     RobotSim::RawInput RawInput;
     RobotSim::OperatorActions Actions;
     double SimTime = 0, Accumulator = 0, NextInput = 0, NextLog = 0;
@@ -51,6 +53,7 @@ private:
     bool bExport = false, bDebug = false, bPaused = false, bAwaitEscapeRelease = false, bAwaitMouseRelease = false, bSkipMouseFrame = false;
     int32 Seed = 12345;
     FRandomStream Random;
+    FRandomStream WeaponRandom;
     FSocket* Socket = nullptr;
     TUniquePtr<FArchive> Log;
     FString RunDirectory;
