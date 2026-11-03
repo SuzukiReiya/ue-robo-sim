@@ -30,8 +30,13 @@ public:
         lastExternal_ = -100.0;
         // 送信元のseqはモード切替後も単調増加を要求する。
     }
+    void submitCommand(Command command, double now, double commandDelay) {
+        manualQueue_.push(now, commandDelay, {
+            std::clamp(command.throttle, -1.0, 1.0),
+            std::clamp(command.turn, -1.0, 1.0)});
+    }
     void submitButtons(OperatorButtons buttons, double now, double commandDelay) {
-        manualQueue_.push(now, commandDelay, toCommand(buttons));
+        submitCommand(toCommand(buttons), now, commandDelay);
     }
     bool submitExternal(double now, double sequence, Command command) {
         if (!std::isfinite(sequence) || !std::isfinite(command.throttle) ||
