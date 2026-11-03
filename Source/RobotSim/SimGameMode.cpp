@@ -318,7 +318,8 @@ void ASimGameMode::LoadInputBindings()
         TEXT("tire_slip"),
         TEXT("command_delay_ms"),
         TEXT("video_delay_ms"),
-        TEXT("display_fps")
+        TEXT("display_fps"),
+        TEXT("turn_inertia_ms")
     };
     double* Values[] = {
         &LoadedTuning.mouseHorizontal,
@@ -329,14 +330,27 @@ void ASimGameMode::LoadInputBindings()
         &LoadedTuning.tireSlip,
         &LoadedTuning.commandDelayMs,
         &LoadedTuning.videoDelayMs,
-        &LoadedTuning.displayFps
+        &LoadedTuning.displayFps,
+        &LoadedTuning.turnInertiaMs
     };
-    for (int32 I=0; I<9; ++I) {
+    for (int32 I=0; I<10; ++I) {
         if (Obj->HasField(NumberFields[I]) &&
             !Obj->TryGetNumberField(NumberFields[I], *Values[I])) {
             UE_LOG(LogTemp, Warning, TEXT("設定数値が不正です。数値は初期値を使用します。"));
             return;
         }
+    }
+    // 設定JSON v2は高さパターン未登録。v3では整数の選択値を保存する。
+    double PatternValue = LoadedTuning.panelPattern;
+    if (Obj->HasField(TEXT("panel_pattern"))) {
+        if (!Obj->TryGetNumberField(TEXT("panel_pattern"), PatternValue) ||
+            !FMath::IsFinite(PatternValue) ||
+            FMath::FloorToDouble(PatternValue) != PatternValue ||
+            PatternValue < 0 || PatternValue >= RobotSim::PanelPatternCount) {
+            UE_LOG(LogTemp, Warning, TEXT("パネル配置パターンが無効です。初期値を使用します。"));
+            return;
+        }
+        LoadedTuning.panelPattern = static_cast<int>(PatternValue);
     }
     if (LoadedTuning.valid()) Tuning = LoadedTuning;
     else UE_LOG(LogTemp, Warning, TEXT("数値範囲が不正のため初期値を使用します。"));
@@ -347,7 +361,7 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
 {
     if (!NewBindings.valid() || !NewTuning.valid()) return false;
     TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-    Json->SetNumberField(TEXT("version"), 2);
+    Json->SetNumberField(TEXT("version"), 3);
     const TCHAR* Fields[] = {
         TEXT("forward"),
         TEXT("backward"),
@@ -377,7 +391,8 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
         TEXT("tire_slip"),
         TEXT("command_delay_ms"),
         TEXT("video_delay_ms"),
-        TEXT("display_fps")
+        TEXT("display_fps"),
+        TEXT("turn_inertia_ms")
     };
     const double Values[] = {
         NewTuning.mouseHorizontal,
@@ -388,10 +403,12 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
         NewTuning.tireSlip,
         NewTuning.commandDelayMs,
         NewTuning.videoDelayMs,
-        NewTuning.displayFps
+        NewTuning.displayFps,
+        NewTuning.turnInertiaMs
     };
-    for (int32 I=0; I<9; ++I)
+    for (int32 I=0; I<10; ++I)
         Json->SetNumberField(NumberFields[I], Values[I]);
+    Json->SetNumberField(TEXT("panel_pattern"), NewTuning.panelPattern);
     FString Output;
     const auto Writer = TJsonWriterFactory<>::Create(&Output);
     if (!FJsonSerializer::Serialize(Json, Writer)) return false;
@@ -402,17 +419,18 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
         return false;
     Bindings = NewBindings;
     Tuning = NewTuning;
+    HitPanels.SetPattern(Tuning.panelPattern);
     CommandDelayMs = static_cast<float>(Tuning.commandDelayMs);
     VideoDelayMs = static_cast<float>(Tuning.videoDelayMs);
     Controller.emergencyStop();
     Actions = {};
     // 実験中にパラメータを変更した履歴を時刻付きで保存する。
     const FString History = FString::Printf(
-        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f\n"),
+        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%d\n"),
         SimTime, Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees,
         Tuning.tireSlip, Tuning.mouseHorizontal, Tuning.mouseVertical,
         Tuning.mouseButtonStrength, Tuning.commandDelayMs, Tuning.videoDelayMs,
-        Tuning.displayFps);
+        Tuning.displayFps, Tuning.turnInertiaMs, Tuning.panelPattern);
     FFileHelper::SaveStringToFile(History,
         *FPaths::Combine(RunDirectory, TEXT("parameter_changes.csv")),
         FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(),
