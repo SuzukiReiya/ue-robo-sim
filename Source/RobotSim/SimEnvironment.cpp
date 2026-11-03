@@ -1,6 +1,7 @@
 #include "SimEnvironment.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -41,7 +42,11 @@ AActor* AddTargetChassis(UWorld* World, FVector SpawnLocation, FLinearColor Tint
     auto* Actor = World->SpawnActor<AActor>(
         SpawnLocation, FRotator::ZeroRotator);
     if (!Actor) return nullptr;
-    auto* Root = NewObject<USceneComponent>(Actor);
+    // 原寸cmのコリジョンRoot。ActorのSweepが壁を検知し、
+    // パネルと照準マウントにはスケールが伝播しない。
+    auto* Root = NewObject<UBoxComponent>(Actor);
+    Root->SetBoxExtent(FVector(9.0f, 9.0f, 5.0f));
+    Root->SetCollisionProfileName(TEXT("BlockAllDynamic"));
     Actor->SetRootComponent(Root);
     Root->RegisterComponent();
     auto* Body = NewObject<UStaticMeshComponent>(Actor);
