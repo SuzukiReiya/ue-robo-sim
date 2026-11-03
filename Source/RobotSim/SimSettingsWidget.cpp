@@ -47,7 +47,7 @@ void USimSettingsWidget::NativeOnInitialized()
         TEXT("項目を変更後、保存して再開。重複割り当ては不可。「なし」は全操作で利用可能です。"), 13))
         ->SetPadding(FMargin(4, 4));
     auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>();
-    Scroll->SetScrollbarVisibility(ESlateVisibility::Visible);
+    Scroll->SetScrollBarVisibility(ESlateVisibility::Visible);
     Column->AddChildToVerticalBox(Scroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     auto* Contents = WidgetTree->ConstructWidget<UVerticalBox>();
     Scroll->AddChild(Contents);
