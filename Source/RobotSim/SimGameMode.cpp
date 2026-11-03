@@ -142,6 +142,17 @@ void ASimGameMode::Step(double Dt)
         RawInput.mouseX = 0;
         RawInput.mouseY = 0;
     }
+    // 射撃と可視判定より先に移動・自転する2機を更新する。
+    if (Target)
+        Target->SetActorLocation(FVector(400, 300 * std::sin(SimTime * 0.5), 0));
+    if (SpinningTarget) {
+        SpinningTarget->SetActorLocation(FVector(
+            160.0 + 205.0 * std::cos(0.58 * SimTime),
+            -325.0 + 160.0 * std::sin(0.47 * SimTime), 0.0));
+        SpinningTarget->SetActorRotation(FRotator(
+            0.0, FMath::Fmod(160.0*SimTime +
+                            15.0*std::sin(1.2*SimTime), 360.0), 0.0));
+    }
     RobotSim::Command Applied = Controller.resolve(SimTime, SharedWeight);
     SelectedAssistPanel = -1;
     // ホールド中に限り、移動・射撃を変えず旋回・ピッチ指令のみ補助する。
@@ -177,17 +188,6 @@ void ASimGameMode::Step(double Dt)
     if (!FSimKeyboardInput::EmergencyStop(PC))
         Weapon.TryFire(GetWorld(), Robot, SimTime, Controller.fireActive(),
                        Vehicle.BodySway(), Tuning.shotRecoilDegrees, WeaponRandom);
-    // 対象の移動は2種類。後者は移動しながら160°/s前後で常時自転する。
-    // 瞬間射撃判定とカメラ取得が参照する前に、両方の姿勢を更新する。
-    if (Target)
-        if (SpinningTarget) {
-        SpinningTarget->SetActorLocation(FVector(
-            160.0 + 205.0 * std::cos(0.58 * SimTime),
-            -325.0 + 160.0 * std::sin(0.47 * SimTime), 0.0));
-        SpinningTarget->SetActorRotation(FRotator(
-            0.0, FMath::Fmod(160.0*SimTime +
-                            15.0*std::sin(1.2*SimTime), 360.0), 0.0));
-    }
     if (Log && SimTime >= NextLog) {
         NextLog = SimTime + 0.02;
         const FVector P = Robot->GetActorLocation();
