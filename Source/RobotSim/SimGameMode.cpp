@@ -229,7 +229,7 @@ FString ASimGameMode::Status() const
         TEXT("1:手動 2:共有 3:自動 | モード=%d | Space:非常停止 Esc:操作設定\n")
         TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
         TEXT("横速度=%+.1fcm/s 射撃=%d | 指令 %.0fms 映像 %.0fms | FPS %.0f | 画像経過 %.0fms\n")
-        TEXT("旋回慣性=%.0fms | パネル高さパターン=%d | パネル命中=%d\\n")
+        TEXT("旋回慣性=%.0fms | パネル高さパターン=%d | パネル命中=%d\n")
         TEXT("移動感度=%.1f倍 | 旋回感度=%.1f倍"),
         static_cast<int32>(Controller.mode()),
         Controller.manual().throttle, Controller.applied().throttle,
@@ -445,7 +445,7 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
     const FString History = FString::Printf(
         TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%d,%.1f,%.1f\n"),
         SimTime, Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees,
-        Tuning.tireSlip, Tuning.mouseHorizontal, Tuning.mouseVertical,
+        Tuning.tireSlip, Tuning.moveSensitivity, Tuning.turnSensitivity,
         Tuning.mouseButtonStrength, Tuning.commandDelayMs, Tuning.videoDelayMs,
         Tuning.displayFps, Tuning.turnInertiaMs, Tuning.panelPattern,
         Tuning.moveSensitivity, Tuning.turnSensitivity);
