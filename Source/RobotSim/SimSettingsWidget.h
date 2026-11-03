@@ -53,6 +53,7 @@ private:
     UFUNCTION() void SlipChanged(float Value);
     UFUNCTION() void DisplayFpsChanged(float Value);
     UFUNCTION() void TurnInertiaChanged(float Value);
+    UFUNCTION() void AimFacingChanged(float Value);
     UFUNCTION() void MoveSensitivityChanged(float Value);
     UFUNCTION() void TurnSensitivityChanged(float Value);
     UFUNCTION() void BasicCommandDelayChanged(float Value);
