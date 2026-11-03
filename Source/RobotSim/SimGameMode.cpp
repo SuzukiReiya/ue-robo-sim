@@ -84,7 +84,7 @@ void ASimGameMode::BeginPlay()
         FDateTime::UtcNow().ToString(TEXT("%Y%m%dT%H%M%S"))+TEXT("_")+FGuid::NewGuid().ToString());
     IFileManager::Get().MakeDirectory(*RunDirectory,true);
     Log.Reset(IFileManager::Get().CreateFileWriter(*FPaths::Combine(RunDirectory,TEXT("truth.csv"))));
-    const FString Header=TEXT("sim_s,x_cm,y_cm,yaw_deg,speed_cm_s,yaw_deg_s,manual_throttle,manual_turn,external_throttle,external_turn,applied_throttle,applied_turn,mode,display_age_s,manual_strafe,external_strafe,applied_strafe,body_pitch,body_roll,shot_count,panel_pattern,panel_hits\n");
+    const FString Header=TEXT("sim_s,x_cm,y_cm,yaw_deg,speed_cm_s,yaw_deg_s,manual_throttle,manual_turn,external_throttle,external_turn,applied_throttle,applied_turn,mode,display_age_s,manual_strafe,external_strafe,applied_strafe,body_pitch,body_roll,shot_count,panel_pattern,panel_hits,pitch_deg,assist_hold,assist_target,enemy2_x_cm,enemy2_y_cm,enemy2_yaw_deg\n");
     if(Log) { FTCHARToUTF8 Bytes(*Header); Log->Serialize((void*)Bytes.Get(),Bytes.Length()); }
     const FString Settings = FString::Printf(
         TEXT("{\"seed\":%d,\"command_delay_ms\":%g,\"video_delay_ms\":%g,")
@@ -194,7 +194,7 @@ void ASimGameMode::Step(double Dt)
         const RobotSim::Command Manual = Controller.manual();
         const RobotSim::Command External = Controller.freshExternal(SimTime);
         const FString Line = FString::Printf(
-            TEXT("%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%.6f,%.3f,%.3f,%.3f,%.4f,%.4f,%d,%d,%d\n"),
+            TEXT("%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%.6f,%.3f,%.3f,%.3f,%.4f,%.4f,%d,%d,%d,%.3f,%d,%d,%.3f,%.3f,%.3f\n"),
             SimTime, P.X, P.Y, Robot->GetActorRotation().Yaw,
             Vehicle.Speed(), Vehicle.YawRate(),
             Manual.throttle, Manual.turn, External.throttle, External.turn,
@@ -202,7 +202,12 @@ void ASimGameMode::Step(double Dt)
             Video ? Video->DisplayAge(SimTime) : -1.0,
             Manual.strafe, External.strafe, Applied.strafe,
             Vehicle.BodySway().Pitch, Vehicle.BodySway().Roll, Weapon.FiredCount(),
-            Tuning.panelPattern, Weapon.PanelHitCount());
+            Tuning.panelPattern, Weapon.PanelHitCount(),
+            AimRig.PitchDegrees(), Controller.assistActive() ? 1 : 0,
+            SelectedAssistPanel,
+            SpinningTarget ? SpinningTarget->GetActorLocation().X : 0.0,
+            SpinningTarget ? SpinningTarget->GetActorLocation().Y : 0.0,
+            SpinningTarget ? SpinningTarget->GetActorRotation().Yaw : 0.0);
         FTCHARToUTF8 Bytes(*Line);
         Log->Serialize((void*)Bytes.Get(), Bytes.Length());
     }
@@ -268,7 +273,8 @@ FString ASimGameMode::Status() const
         TEXT("前後入力(手動/適用)=%+.2f/%+.2f | 速度=%+.1fcm/s | 位置=(%.0f, %.0f)cm | 移動遮断=%s\n")
         TEXT("横速度=%+.1fcm/s 射撃=%d | 指令 %.0fms 映像 %.0fms | FPS %.0f | 画像経過 %.0fms\n")
         TEXT("旋回慣性=%.0fms | パネル高さパターン=%d | パネル命中=%d\n")
-        TEXT("移動感度=%.1f倍 | 旋回感度=%.1f倍"),
+        TEXT("移動感度=%.1f倍 | 旋回感度=%.1f倍\n")
+        TEXT("砲身ピッチ=%+.1f° | Shift補正=%s | 対象パネル=%d"),
         static_cast<int32>(Controller.mode()),
         Controller.manual().throttle, Controller.applied().throttle,
         Vehicle.Speed(), Position.X, Position.Y,
@@ -277,7 +283,9 @@ FString ASimGameMode::Status() const
         Tuning.displayFps,
         Video ? Video->DisplayAge(SimTime) * 1000 : -1.0,
         Tuning.turnInertiaMs, Tuning.panelPattern, Weapon.PanelHitCount(),
-        Tuning.moveSensitivity, Tuning.turnSensitivity);
+        Tuning.moveSensitivity, Tuning.turnSensitivity,
+        AimRig.PitchDegrees(), Controller.assistActive() ? TEXT("有効") : TEXT("無効"),
+        SelectedAssistPanel);
 }
 
 FString ASimGameMode::BindingsPath() const
