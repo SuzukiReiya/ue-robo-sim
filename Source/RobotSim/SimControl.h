@@ -37,7 +37,8 @@ public:
     void submitCommand(Command command, double now, double commandDelay) {
         manualQueue_.push(now, commandDelay, {
             std::clamp(command.throttle, -1.0, 1.0),
-            std::clamp(command.turn, -1.0, 1.0)});
+            std::clamp(command.turn, -1.0, 1.0),
+            std::clamp(command.strafe, -1.0, 1.0)});
     }
     // 射撃も機体指令と同じ遅延経路に通し、裁定はここで行う。
     void submitActions(OperatorActions actions, double now, double commandDelay) {
