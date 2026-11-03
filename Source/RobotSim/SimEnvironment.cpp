@@ -1,5 +1,6 @@
 #include "SimEnvironment.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -28,6 +29,33 @@ AActor* AddBox(UWorld* World, FVector Location, FVector Size, FLinearColor Tint,
         auto* Material = UMaterialInstanceDynamic::Create(Base, Actor);
         Material->SetVectorParameterValue(TEXT("Color"), Tint);
         Mesh->SetMaterial(0, Material);
+    }
+    return Actor;
+}
+
+// ゲームモジュールを規定の高さ・方向に固定できる、無拡大スケールの敵シャーシ。
+AActor* AddTargetChassis(UWorld* World)
+{
+    auto* Actor = World->SpawnActor<AActor>(
+        FVector(400, 0, 0), FRotator::ZeroRotator);
+    if (!Actor) return nullptr;
+    auto* Root = NewObject<USceneComponent>(Actor);
+    Actor->SetRootComponent(Root);
+    Root->RegisterComponent();
+    auto* Body = NewObject<UStaticMeshComponent>(Actor);
+    Body->SetupAttachment(Root);
+    Body->SetStaticMesh(LoadObject<UStaticMesh>(
+        nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
+    Body->SetRelativeLocation(FVector(0, 0, 5.0f));
+    Body->SetRelativeScale3D(FVector(0.18f, 0.18f, 0.08f));
+    Body->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+    Body->RegisterComponent();
+    if (auto* Base = LoadObject<UMaterialInterface>(
+            nullptr, TEXT("/Game/Generated/M_Robot.M_Robot"))) {
+        auto* Color = UMaterialInstanceDynamic::Create(Base, Actor);
+        Color->SetVectorParameterValue(
+            TEXT("Color"), FLinearColor(0.77f, 0.05f, 0.04f));
+        Body->SetMaterial(0, Color);
     }
     return Actor;
 }
@@ -116,8 +144,9 @@ void FSimEnvironment::Build(UWorld* World, AActor*& OutRobot, AActor*& OutTarget
                FLinearColor(1.0f, 0.97f, 0.84f), TEXT("M_Robot"));
     }
     // カメラ追跡対象は赤単色を維持し、背景テクスチャの影響を切り分けやすくする。
-    OutRobot = AddBox(World, FVector(-500, 0, 20), FVector(50, 40, 40),
+    // 車検サイズ30cmを超えない想定の小型ボディ。カメラと射出口も低い位置へ。
+    OutRobot = AddBox(World, FVector(-500, 0, 5), FVector(20, 18, 10),
                       FLinearColor(0.05f, 0.2f, 0.8f), TEXT("M_Robot"), true);
-    OutTarget = AddBox(World, FVector(400, 0, 25), FVector(50, 50, 50),
-                       FLinearColor(0.9f, 0.02f, 0.02f), TEXT("M_Robot"), true);
+    // 敵は無拡大のルートに四方向のパネルを取り付ける。
+    OutTarget = AddTargetChassis(World);
 }
