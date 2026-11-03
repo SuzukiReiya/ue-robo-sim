@@ -18,17 +18,18 @@
 void USimSettingsWidget::NativeOnInitialized()
 {
     Super::NativeOnInitialized();
-    bIsFocusable = true;
+    SetIsFocusable(true);
     if (WidgetTree->RootWidget) return;
     auto* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
     WidgetTree->RootWidget = Canvas;
     auto* Panel = WidgetTree->ConstructWidget<UBorder>();
     Panel->SetBrushColor(FLinearColor(0.035f, 0.05f, 0.08f, 0.98f));
     Panel->SetPadding(FMargin(20));
-    auto* Slot = Canvas->AddChildToCanvas(Panel);
-    Slot->SetAnchors(FAnchors(0.5f, 0.5f));
-    Slot->SetAlignment(FVector2D(0.5f, 0.5f));
-    Slot->SetSize(FVector2D(870, 640));
+    // UWidget::Slotと名前が衝突しないよう、ローカル変数名を明確化する。
+    auto* CanvasSlot = Canvas->AddChildToCanvas(Panel);
+    CanvasSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+    CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+    CanvasSlot->SetSize(FVector2D(870, 640));
     auto* Column = WidgetTree->ConstructWidget<UVerticalBox>();
     Panel->SetContent(Column);
 
