@@ -345,6 +345,30 @@ void ASimGameMode::LoadInputBindings()
             return;
         }
     }
+    // v4までは7操作。追加3操作は存在すれば復元、なければ初期値。
+    // 旧カスタム割当が新しい既定キーと衝突する場合は追加側を未割当にする。
+    const TCHAR* ExtraFields[] = {
+        TEXT("pitch_up"), TEXT("pitch_down"), TEXT("aim_assist")
+    };
+    RobotSim::InputSource* ExtraValues[] = {
+        &Loaded.pitchUp, &Loaded.pitchDown, &Loaded.aimAssist
+    };
+    const RobotSim::InputSource Existing[] = {
+        Loaded.forward, Loaded.backward, Loaded.strafeLeft, Loaded.strafeRight,
+        Loaded.turnLeft, Loaded.turnRight, Loaded.fire
+    };
+    for (int32 I=0; I<3; ++I) {
+        FString Token;
+        if (Obj->TryGetStringField(ExtraFields[I], Token)) {
+            if (!RobotSim::parseSource(TCHAR_TO_UTF8(*Token), *ExtraValues[I])) {
+                UE_LOG(LogTemp, Warning, TEXT("補正・ピッチ操作設定が不正です。初期値を使用します。"));
+                return;
+            }
+        } else {
+            for (auto Key : Existing)
+                if (Key == *ExtraValues[I]) *ExtraValues[I] = RobotSim::InputSource::None;
+        }
+    }
     if (!Loaded.valid()) {
         UE_LOG(LogTemp, Warning, TEXT("割り当て重複のため初期値を使用します。"));
         return;
@@ -416,7 +440,7 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
 {
     if (!NewBindings.valid() || !NewTuning.valid()) return false;
     TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-    Json->SetNumberField(TEXT("version"), 4);
+    Json->SetNumberField(TEXT("version"), 5);
     const TCHAR* Fields[] = {
         TEXT("forward"),
         TEXT("backward"),
@@ -437,6 +461,12 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
     };
     for (int32 I=0; I<7; ++I)
         Json->SetStringField(Fields[I], UTF8_TO_TCHAR(RobotSim::sourceToken(Keys[I])));
+    Json->SetStringField(TEXT("pitch_up"),
+        UTF8_TO_TCHAR(RobotSim::sourceToken(NewBindings.pitchUp)));
+    Json->SetStringField(TEXT("pitch_down"),
+        UTF8_TO_TCHAR(RobotSim::sourceToken(NewBindings.pitchDown)));
+    Json->SetStringField(TEXT("aim_assist"),
+        UTF8_TO_TCHAR(RobotSim::sourceToken(NewBindings.aimAssist)));
     const TCHAR* NumberFields[] = {
         TEXT("move_sensitivity"),
         TEXT("turn_sensitivity"),
