@@ -21,14 +21,16 @@ class CommandRouter {
     Mode mode_ = Mode::Manual;
     DelayQueue<Command> manualQueue_;
     DelayQueue<bool> fireQueue_;
+    DelayQueue<bool> assistQueue_;
     Command manual_{}, external_{}, applied_{};
-    bool manualFire_ = false;
+    bool manualFire_ = false, manualAssist_ = false;
     double lastManual_ = -100.0, lastExternal_ = -100.0, lastSequence_ = -1.0;
 public:
     void selectMode(Mode next) {
         mode_ = next;
         manualQueue_.clear();
-        fireQueue_.clear(); manualFire_ = false;
+        fireQueue_.clear(); assistQueue_.clear();
+        manualFire_ = false; manualAssist_ = false;
         manual_ = {}; external_ = {}; applied_ = {};
         lastManual_ = -100.0;
         lastExternal_ = -100.0;
@@ -38,12 +40,14 @@ public:
         manualQueue_.push(now, commandDelay, {
             std::clamp(command.throttle, -1.0, 1.0),
             std::clamp(command.turn, -1.0, 1.0),
-            std::clamp(command.strafe, -1.0, 1.0)});
+            std::clamp(command.strafe, -1.0, 1.0),
+            std::clamp(command.pitch, -1.0, 1.0)});
     }
     // 射撃も機体指令と同じ遅延経路に通し、裁定はここで行う。
     void submitActions(OperatorActions actions, double now, double commandDelay) {
         submitCommand(actions.movement, now, commandDelay);
         fireQueue_.push(now, commandDelay, actions.fire);
+        assistQueue_.push(now, commandDelay, actions.aimAssist);
     }
     void submitButtons(OperatorButtons buttons, double now, double commandDelay) {
         submitCommand(toCommand(buttons), now, commandDelay);
@@ -51,18 +55,23 @@ public:
     bool submitExternal(double now, double sequence, Command command) {
         if (!std::isfinite(sequence) || !std::isfinite(command.throttle) ||
             !std::isfinite(command.turn) || !std::isfinite(command.strafe) ||
+            !std::isfinite(command.pitch) ||
             sequence <= lastSequence_) return false;
         lastSequence_ = sequence;
         lastExternal_ = now;
         external_ = {std::clamp(command.throttle, -1.0, 1.0),
                      std::clamp(command.turn, -1.0, 1.0),
-                     std::clamp(command.strafe, -1.0, 1.0)};
+                     std::clamp(command.strafe, -1.0, 1.0),
+                     std::clamp(command.pitch, -1.0, 1.0)};
         return true;
     }
     Command resolve(double now, double sharedWeight) {
         if (manualQueue_.poll(now, manual_)) lastManual_ = now;
         fireQueue_.poll(now, manualFire_);
-        if (now - lastManual_ > 0.25) { manual_ = {}; manualFire_ = false; }
+        assistQueue_.poll(now, manualAssist_);
+        if (now - lastManual_ > 0.25) {
+            manual_ = {}; manualFire_ = false; manualAssist_ = false;
+        }
         const bool fresh = now - lastExternal_ <= 0.25;
         const Command local = fresh ? external_ : Command{};
         switch (mode_) {
@@ -80,6 +89,7 @@ public:
     }
     Mode mode() const { return mode_; }
     bool fireActive() const { return mode_ != Mode::Automatic && manualFire_; }
+    bool assistActive() const { return mode_ != Mode::Automatic && manualAssist_; }
     Command manual() const { return manual_; }
     Command applied() const { return applied_; }
     Command freshExternal(double now) const {
