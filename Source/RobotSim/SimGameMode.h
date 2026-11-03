@@ -48,7 +48,7 @@ private:
     double SimTime = 0, Accumulator = 0, NextInput = 0, NextLog = 0;
     float CommandDelayMs = 100, VideoDelayMs = 100, SharedWeight = 0.5f;
     float JitterMs = 0, LossRate = 0;
-    bool bExport = false, bDebug = false, bPaused = false;
+    bool bExport = false, bDebug = false, bPaused = false, bAwaitEscapeRelease = false;
     int32 Seed = 12345;
     FRandomStream Random;
     FSocket* Socket = nullptr;
