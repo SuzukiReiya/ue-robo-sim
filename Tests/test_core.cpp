@@ -95,6 +95,21 @@ int main() {
     }
     RobotSim::InputSource invalid;
     assert(!RobotSim::parseSource("Escape", invalid)); // 予約キー
+    RobotSim::CommandRouter fireRouter;
+    RobotSim::OperatorActions fireInput;
+    fireInput.fire = true;
+    fireRouter.submitActions(fireInput, 6.0, 0.2);
+    fireRouter.resolve(6.19, 0.5);
+    assert(!fireRouter.fireActive()); // 指令遅延が満了するまで発射しない。
+    fireRouter.resolve(6.20, 0.5);
+    assert(fireRouter.fireActive());
+    fireRouter.selectMode(RobotSim::Mode::Automatic);
+    assert(!fireRouter.fireActive()); // 手動の射撃は自動モードに持ち込まない。
+    fireRouter.selectMode(RobotSim::Mode::Manual);
+    fireRouter.submitActions(fireInput, 7.0, 0.0);
+    fireRouter.resolve(7.0, 0.5);
+    fireRouter.emergencyStop();
+    assert(!fireRouter.fireActive()); // 非常停止は発射も取り消す。
     RobotSim::CommandRouter remappedRouter;
     remappedRouter.submitCommand({-0.6,0.4}, 5.0, 0.1);
     assert(remappedRouter.resolve(5.1,0.5).throttle < -0.59);
