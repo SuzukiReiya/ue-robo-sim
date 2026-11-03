@@ -80,10 +80,10 @@ void ASimGameMode::BeginPlay()
     const FString Header=TEXT("sim_s,x_cm,y_cm,yaw_deg,speed_cm_s,yaw_deg_s,manual_throttle,manual_turn,external_throttle,external_turn,applied_throttle,applied_turn,mode,display_age_s,manual_strafe,external_strafe,applied_strafe,body_pitch,body_roll,shot_count\n");
     if(Log) { FTCHARToUTF8 Bytes(*Header); Log->Serialize((void*)Bytes.Get(),Bytes.Length()); }
     const FString Settings = FString::Printf(
-        TEXT("{\\\"seed\\\":%d,\\\"command_delay_ms\\\":%g,\\\"video_delay_ms\\\":%g,")
-        TEXT("\\\"jitter_ms\\\":%g,\\\"loss_rate\\\":%g,\\\"shared_weight\\\":%g,")
-        TEXT("\\\"export_frames\\\":%s,\\\"physics_hz\\\":120,\\\"camera_hz\\\":%g,")
-        TEXT("\\\"body_sway_deg\\\":%g,\\\"shot_recoil_deg\\\":%g,\\\"tire_slip\\\":%g}"),
+        TEXT("{\"seed\":%d,\"command_delay_ms\":%g,\"video_delay_ms\":%g,")
+        TEXT("\"jitter_ms\":%g,\"loss_rate\":%g,\"shared_weight\":%g,")
+        TEXT("\"export_frames\":%s,\"physics_hz\":120,\"camera_hz\":%g,")
+        TEXT("\"body_sway_deg\":%g,\"shot_recoil_deg\":%g,\"tire_slip\":%g}"),
         Seed, CommandDelayMs, VideoDelayMs, JitterMs, LossRate, SharedWeight,
         bExport ? TEXT("true") : TEXT("false"), Tuning.displayFps,
         Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees, Tuning.tireSlip);
