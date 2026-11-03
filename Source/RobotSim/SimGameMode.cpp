@@ -92,12 +92,14 @@ void ASimGameMode::BeginPlay()
         TEXT("\"export_frames\":%s,\"physics_hz\":120,\"camera_hz\":%g,")
         TEXT("\"body_sway_deg\":%g,\"shot_recoil_deg\":%g,\"tire_slip\":%g,")
         TEXT("\"turn_inertia_ms\":%g,\"panel_pattern\":%d,")
-        TEXT("\"move_sensitivity\":%g,\"turn_sensitivity\":%g}"),
+        TEXT("\"move_sensitivity\":%g,\"turn_sensitivity\":%g,")
+        TEXT("\"aim_facing_angle_deg\":%g}"),
         Seed, CommandDelayMs, VideoDelayMs, JitterMs, LossRate, SharedWeight,
         bExport ? TEXT("true") : TEXT("false"), Tuning.displayFps,
         Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees, Tuning.tireSlip,
         Tuning.turnInertiaMs, Tuning.panelPattern,
-        Tuning.moveSensitivity, Tuning.turnSensitivity);
+        Tuning.moveSensitivity, Tuning.turnSensitivity,
+        Tuning.aimFacingAngleDeg);
     FFileHelper::SaveStringToFile(Settings,*FPaths::Combine(RunDirectory,TEXT("settings.json")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
     if(auto* PC=GetWorld()->GetFirstPlayerController()) { PC->bShowMouseCursor=false; PC->SetInputMode(FInputModeGameOnly()); }
     UE_LOG(LogTemp,Display,TEXT("ROBOT_SIM_READY: %s"),*RunDirectory);
@@ -161,7 +163,8 @@ void ASimGameMode::Step(double Dt)
         const auto Result = FSimAimAssist::Find(
             GetWorld(), Video->CameraTransform(),
             AimRig.MuzzleMount()->GetComponentLocation(),
-            Video->HorizontalFov(), Robot, Target, SpinningTarget);
+            Video->HorizontalFov(), Robot, Target, SpinningTarget,
+            Tuning.aimFacingAngleDeg);
         if (Result.found) {
             SelectedAssistPanel = Result.id;
             const FRotator Disturbance =
@@ -274,7 +277,7 @@ FString ASimGameMode::Status() const
         TEXT("横速度=%+.1fcm/s 射撃=%d | 指令 %.0fms 映像 %.0fms | FPS %.0f | 画像経過 %.0fms\n")
         TEXT("旋回慣性=%.0fms | パネル高さパターン=%d | パネル命中=%d\n")
         TEXT("移動感度=%.1f倍 | 旋回感度=%.1f倍\n")
-        TEXT("砲身ピッチ=%+.1f° | Shift補正=%s | 対象パネル=%d"),
+        TEXT("砲身ピッチ=%+.1f° | Shift補正=%s | 対象パネル=%d | 正面許容角=%.0f°"),
         static_cast<int32>(Controller.mode()),
         Controller.manual().throttle, Controller.applied().throttle,
         Vehicle.Speed(), Position.X, Position.Y,
@@ -285,7 +288,7 @@ FString ASimGameMode::Status() const
         Tuning.turnInertiaMs, Tuning.panelPattern, Weapon.PanelHitCount(),
         Tuning.moveSensitivity, Tuning.turnSensitivity,
         AimRig.PitchDegrees(), Controller.assistActive() ? TEXT("有効") : TEXT("無効"),
-        SelectedAssistPanel);
+        SelectedAssistPanel, Tuning.aimFacingAngleDeg);
 }
 
 FString ASimGameMode::BindingsPath() const
@@ -439,6 +442,15 @@ void ASimGameMode::LoadInputBindings()
         FMath::IsFinite(Legacy) && Legacy > 0) {
         LoadedTuning.turnSensitivity = FMath::Clamp(Legacy * 12.0, 0.1, 20.0);
     }
+    // 旧version 5までの設定には本項目がない。未指定時は45度を使用。
+    double Facing = LoadedTuning.aimFacingAngleDeg;
+    if (Obj->HasField(TEXT("aim_facing_angle_deg"))) {
+        if (!Obj->TryGetNumberField(TEXT("aim_facing_angle_deg"), Facing)) {
+            UE_LOG(LogTemp, Warning, TEXT("照準補正の正面許容角度が数値ではありません。"));
+            return;
+        }
+        LoadedTuning.aimFacingAngleDeg = Facing;
+    }
     if (LoadedTuning.valid()) Tuning = LoadedTuning;
     else UE_LOG(LogTemp, Warning, TEXT("数値範囲が不正のため初期値を使用します。"));
 }
@@ -448,7 +460,7 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
 {
     if (!NewBindings.valid() || !NewTuning.valid()) return false;
     TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
-    Json->SetNumberField(TEXT("version"), 5);
+    Json->SetNumberField(TEXT("version"), 6);
     const TCHAR* Fields[] = {
         TEXT("forward"),
         TEXT("backward"),
@@ -502,6 +514,7 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
     for (int32 I=0; I<10; ++I)
         Json->SetNumberField(NumberFields[I], Values[I]);
     Json->SetNumberField(TEXT("panel_pattern"), NewTuning.panelPattern);
+    Json->SetNumberField(TEXT("aim_facing_angle_deg"), NewTuning.aimFacingAngleDeg);
     FString Output;
     const auto Writer = TJsonWriterFactory<>::Create(&Output);
     if (!FJsonSerializer::Serialize(Json, Writer)) return false;
@@ -524,16 +537,16 @@ bool ASimGameMode::ApplySettings(const RobotSim::InputBindings& NewBindings,
         FFileHelper::SaveStringToFile(
             TEXT("sim_s,body_sway_deg,shot_recoil_deg,tire_slip,mouse_button_strength,")
             TEXT("command_delay_ms,video_delay_ms,display_fps,turn_inertia_ms,")
-            TEXT("panel_pattern,move_sensitivity,turn_sensitivity\n"),
+            TEXT("panel_pattern,move_sensitivity,turn_sensitivity,aim_facing_angle_deg\n"),
             *HistoryPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
     }
     const FString History = FString::Printf(
-        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.0f,%.0f,%.1f,%.1f,%d,%.1f,%.1f\n"),
+        TEXT("%.6f,%.3f,%.3f,%.2f,%.3f,%.0f,%.0f,%.1f,%.1f,%d,%.1f,%.1f,%.0f\n"),
         SimTime, Tuning.bodySwayDegrees, Tuning.shotRecoilDegrees,
         Tuning.tireSlip, Tuning.mouseButtonStrength,
         Tuning.commandDelayMs, Tuning.videoDelayMs, Tuning.displayFps,
         Tuning.turnInertiaMs, Tuning.panelPattern,
-        Tuning.moveSensitivity, Tuning.turnSensitivity);
+        Tuning.moveSensitivity, Tuning.turnSensitivity, Tuning.aimFacingAngleDeg);
     FFileHelper::SaveStringToFile(History,
         *HistoryPath,
         FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(),
