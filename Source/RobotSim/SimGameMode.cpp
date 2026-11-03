@@ -147,15 +147,18 @@ void ASimGameMode::Step(double Dt)
 void ASimGameMode::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    if(auto* PC=GetWorld()->GetFirstPlayerController()) {
+    if (auto* PC = GetWorld()->GetFirstPlayerController()) {
         if (!PC->IsInputKeyDown(EKeys::Escape)) bAwaitEscapeRelease = false;
-        if(PC->WasInputKeyJustPressed(EKeys::One)) SwitchMode(RobotSim::Mode::Manual);
-        if(PC->WasInputKeyJustPressed(EKeys::Two)) SwitchMode(RobotSim::Mode::Shared);
-        if(PC->WasInputKeyJustPressed(EKeys::Three)) SwitchMode(RobotSim::Mode::Automatic);
-        if(PC->WasInputKeyJustPressed(EKeys::F1)) bDebug=!bDebug;
         if (!bAwaitEscapeRelease && PC->WasInputKeyJustPressed(EKeys::Escape)) {
             SetSimulationPaused(!bPaused);
             return;
+        }
+        // メニュー操作中には研究モードとデバッグ表示を変更させない。
+        if (!bPaused) {
+            if (PC->WasInputKeyJustPressed(EKeys::One)) SwitchMode(RobotSim::Mode::Manual);
+            if (PC->WasInputKeyJustPressed(EKeys::Two)) SwitchMode(RobotSim::Mode::Shared);
+            if (PC->WasInputKeyJustPressed(EKeys::Three)) SwitchMode(RobotSim::Mode::Automatic);
+            if (PC->WasInputKeyJustPressed(EKeys::F1)) bDebug = !bDebug;
         }
     }
     // メニュー中はシミュレーション時間、機体、映像、対象、指令経路を停止する。
