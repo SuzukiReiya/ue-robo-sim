@@ -4,8 +4,8 @@
 namespace RobotSim {
 // 実験条件。大きい値が何を意味するかを各パラメータ名で明確にする。
 struct Tuning {
-    double mouseHorizontal = 0.0833333333; // マウス左右の指令/px
-    double mouseVertical = 0.0833333333;   // マウス上下の指令/px
+    double mouseHorizontal = (1.0 / 12.0); // マウス左右の指令/px
+    double mouseVertical = (1.0 / 12.0);   // マウス上下の指令/px
     double mouseButtonStrength = 1.0;     // マウスボタンを走行軸に割当てたときの指令強度
     double bodySwayDegrees = 1.0;         // 加減速と旋回による揺れの最大規模
     double shotRecoilDegrees = 0.8;       // 発射時の射線とカメラの揺れ
